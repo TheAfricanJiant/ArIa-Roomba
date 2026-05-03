@@ -1,0 +1,7 @@
+name: Cloud AI Assistant
+icon: ✨
+description: Simple chatbot with Cloud LLM
+
+bricks:
+  - arduino:web_ui
+  - arduino:cloud_llm

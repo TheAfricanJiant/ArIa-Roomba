@@ -1,0 +1,139 @@
+
+<style>
+.aw{padding:.5rem 0}
+.ah{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.at{font-size:17px;font-weight:500;color:var(--color-text-primary)}
+.ah2{font-size:11px;color:var(--color-text-tertiary)}
+.lyr{display:flex;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);background:var(--color-background-primary);overflow:hidden;margin-bottom:4px}
+.la{width:4px;flex-shrink:0}
+.lb{flex:1;padding:11px 14px}
+.lh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.lt{font-size:9px;font-weight:500;letter-spacing:.06em;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.ln{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.ls{font-size:11px;color:var(--color-text-secondary);margin-left:auto}
+.cps{display:flex;flex-wrap:wrap;gap:5px}
+.cp{font-size:11px;padding:4px 10px;border-radius:5px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);color:var(--color-text-primary);cursor:pointer;transition:border-color .12s,background .12s;white-space:nowrap;user-select:none}
+.cp:hover{border-color:var(--color-border-secondary)}
+.cp.sel{border-color:var(--color-border-primary);background:var(--color-background-tertiary)}
+.cn{display:flex;align-items:center;gap:8px;padding:2px 18px;margin-bottom:4px}
+.cnl{flex:1;height:0.5px;background:var(--color-border-tertiary)}
+.cnt{font-size:10px;color:var(--color-text-tertiary);white-space:nowrap}
+.brg{border:0.5px dashed var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-secondary);padding:9px 14px;margin-bottom:4px;display:flex;align-items:center;gap:12px}
+.bio{display:flex;flex-direction:column;gap:3px;align-items:center;flex-shrink:0}
+.bio span{font-size:9px;color:var(--color-text-tertiary);white-space:nowrap}
+.bdv{width:0.5px;height:34px;background:var(--color-border-tertiary);flex-shrink:0}
+.bbc{flex:1}
+.bbt{font-size:11px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px}
+.det{margin-top:10px;padding:13px 15px;border-radius:var(--border-radius-lg);border:0.5px solid var(--color-border-secondary);background:var(--color-background-secondary);display:none}
+.det.show{display:block}
+.dtt{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
+.ddd{font-size:12px;color:var(--color-text-secondary);line-height:1.65;margin-bottom:10px}
+.dg{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+.dc{padding:9px 11px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)}
+.dl{font-size:9px;color:var(--color-text-tertiary);font-weight:500;margin-bottom:3px;letter-spacing:.04em}
+.dv{font-size:11px;color:var(--color-text-primary);line-height:1.4}
+.fw{margin-top:10px;padding:10px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.fwl{font-size:9px;font-weight:500;color:var(--color-text-secondary);margin-bottom:6px;letter-spacing:.05em}
+.fws{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.fwst{font-size:11px;color:var(--color-text-primary);padding:2px 7px;border-radius:4px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)}
+.fwa{font-size:11px;color:var(--color-text-tertiary)}
+.askbtn{margin-top:10px;width:100%;padding:9px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-primary);font-size:12px;cursor:pointer;transition:background .12s;text-align:center;display:block}
+.askbtn:hover{background:var(--color-background-secondary)}
+</style>
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">ARIA full system architecture — tap any component to see implementation details</h2>
+<div class="aw">
+<div class="ah"><span class="at">ARIA — Full system architecture</span><span class="ah2">tap any component for details</span></div>
+<div id="al"></div>
+<div id="dp" class="det"></div>
+<div class="fw">
+<div class="fwl">DATA FLOW</div>
+<div class="fws">
+<span class="fwst">Sensors</span><span class="fwa">&#8594;</span>
+<span class="fwst">STM32 C++</span><span class="fwa">&#8594;</span>
+<span class="fwst">App Lab Bridge</span><span class="fwa">&#8594;</span>
+<span class="fwst">Python EKF + Nav</span><span class="fwa">&#8594;</span>
+<span class="fwst">Edge Impulse &#215;3</span><span class="fwa">&#8594;</span>
+<span class="fwst">Cleaning logic</span><span class="fwa">&#8594;</span>
+<span class="fwst">Bridge &#8595;</span><span class="fwa">&#8594;</span>
+<span class="fwst">Motors + actuators</span>
+</div>
+</div>
+<button class="askbtn" onclick="sendPrompt('Write the complete Arduino C++ sketch for ARIA — STM32 side with App Lab Bridge protocol, encoder ISR, ultrasonic polling, IMU I2C, and motor PWM control')">Generate Arduino C++ sketch for the STM32 side &#8599;</button>
+</div>
+<script>
+const L=[
+{id:'hw',name:'Hardware layer',sub:'Physical world',tag:'PHYSICAL',tbg:'var(--color-background-warning)',tc:'var(--color-text-warning)',acc:'#EF9F27',
+chips:[{id:'cam',n:'USB Camera'},{id:'mic',n:'Microphone'},{id:'us6',n:'6&#215; Ultrasonic'},{id:'imu',n:'MPU6050 IMU'},{id:'enc',n:'Encoder motors &#215;2'},{id:'vac',n:'Vacuum motor'},{id:'bru',n:'Brush roller'}]},
+{type:'cn',label:'GPIO &#183; I&#178;C &#183; PWM &#183; UART'},
+{id:'mcu',name:'STM32 &#8212; Arduino C++',sub:'Real-time control',tag:'EMBEDDED',tbg:'var(--color-background-success)',tc:'var(--color-text-success)',acc:'#1D9E75',
+chips:[{id:'mpwm',n:'Motor PWM'},{id:'eisr',n:'Encoder ISR'},{id:'usp',n:'Ultrasonic poll'},{id:'imui',n:'IMU I&#178;C'},{id:'spro',n:'Serial protocol'}]},
+{type:'brg'},
+{id:'py',name:'Python &#8212; Linux intelligence',sub:'Qualcomm MPU',tag:'PYTHON',tbg:'var(--color-background-info)',tc:'var(--color-text-info)',acc:'#378ADD',
+chips:[{id:'ekf',n:'EKF localization'},{id:'nav',n:'Coverage navigator'},{id:'cln',n:'Cleaning logic'},{id:'camh',n:'Camera handler'},{id:'hmap',n:'Heatmap logger'}]},
+{type:'cn',label:'inference calls &#183; results'},
+{id:'ai',name:'Edge Impulse AI models',sub:'On-device inference',tag:'EDGE AI',tbg:'var(--color-background-danger)',tc:'var(--color-text-danger)',acc:'#7F77DD',
+chips:[{id:'flr',n:'Floor classifier'},{id:'obs',n:'Obstacle classifier'},{id:'aud',n:'Audio debris model'}]},
+{type:'cn',label:'classification &#8594; action decisions'},
+{id:'out',name:'Outputs &#38; actions',sub:'Final decisions',tag:'OUTPUT',tbg:'var(--color-background-success)',tc:'var(--color-text-success)',acc:'#639922',
+chips:[{id:'mcmd',n:'Motor commands'},{id:'suct',n:'Suction adjust'},{id:'brsp',n:'Brush speed'},{id:'dhm',n:'Dirt heatmap'},{id:'oalrt',n:'Obstacle alert'}]},
+];
+
+const D={
+cam:{t:'USB Camera (Anycubic Kobra 3)',d:'Captures floor frames for Edge Impulse inference. Runs at 96&#215;96 for AI models and 320&#215;240 for optical flow correction. Must first be confirmed as UVC on Linux: run ls /dev/video* after plugging in. If it appears, you are good to go.',c:[{l:'Interface',v:'/dev/video0 (UVC)'},{l:'Library',v:'OpenCV VideoCapture'},{l:'AI resolution',v:'96&#215;96 px'},{l:'Flow resolution',v:'320&#215;240 px'}]},
+mic:{t:'Microphone (analog)',d:'Listens to vacuum intake audio. Crumbs, dust, and gravel each produce a distinct spectrogram. The Edge Impulse MFE audio model classifies debris type in real time, feeding the heatmap logger with debris density data per grid cell.',c:[{l:'Interface',v:'ADC pin on STM32'},{l:'Model',v:'MFE spectrogram NN'},{l:'Classes',v:'dust, crumbs, gravel, clear'},{l:'Cost',v:'~$2 analog mic module'}]},
+us6:{t:'6&#215; Ultrasonic sensors (HC-SR04)',d:'Ring-mounted: front, front-left, front-right, left, right, rear. Front sensors trigger obstacle stops. Side sensors enable wall-following and provide position drift correction each time the robot touches a room boundary.',c:[{l:'Interface',v:'GPIO trigger / echo'},{l:'Range',v:'2 &#8211; 400 cm'},{l:'Cycle rate',v:'All 6 every 50ms'},{l:'Key role',v:'Wall-follow + avoidance'}]},
+imu:{t:'MPU6050 IMU',d:'Provides yaw rate and acceleration. Fused with encoder odometry via the EKF to correct heading drift &#8212; without this the robot curves off-track within a few metres. The single most important sensor for navigation stability over a full cleaning run.',c:[{l:'Interface',v:'I&#178;C on STM32'},{l:'Library',v:'MPU6050.h'},{l:'Fusion',v:'filterpy EKF on Python'},{l:'Cost',v:'~$3'}]},
+enc:{t:'Encoder DC motors &#215;2',d:'Differential drive with built-in quadrature encoders. Pulse counts captured by interrupt service routines, converted to wheel velocity, and sent via Bridge every 20ms for EKF position tracking. The foundation of all odometry.',c:[{l:'Driver',v:'TB6612FNG'},{l:'ISR type',v:'Hardware interrupt'},{l:'Bridge output',v:'encL, encR ticks/20ms'},{l:'EKF output',v:'x, y, heading estimate'}]},
+vac:{t:'Vacuum motor',d:'DC motor driving an impeller. PWM speed set by the cleaning logic node based on floor classifier output &#8212; carpet dirty: 100%, tile: 60%, hardwood: 40%. Saves battery and prevents scattering light debris on hard floors.',c:[{l:'Motor type',v:'775 DC or AliExpress unit'},{l:'Control',v:'PWM from STM32'},{l:'Input',v:'/vacuum/speed cmd'},{l:'Cost',v:'Ready-made unit ~$8'}]},
+bru:{t:'Brush roller motor',d:'Front-mounted roller and optional side brush. Speed is controlled by the audio debris classifier &#8212; heavy debris detected means faster brush RPM; hardwood surface triggers minimum speed to avoid scratching the floor.',c:[{l:'Motor',v:'N20 DC motor'},{l:'Control',v:'PWM from STM32'},{l:'Input',v:'/brush/speed cmd'},{l:'3D print',v:'Mark II brush housing'}]},
+mpwm:{t:'Motor PWM (Arduino C++)',d:'Receives left/right PWM targets from Python via the App Lab Bridge and translates them into TB6612FNG motor driver signals. Also manages vacuum and brush motor speeds from separate Bridge channels on the same serial stream.',c:[{l:'Library',v:'TB6612FNG Arduino'},{l:'Bridge input',v:'M,leftPWM,rightPWM'},{l:'PWM frequency',v:'20 kHz'},{l:'Range',v:'-255 to 255 per wheel'}]},
+eisr:{t:'Encoder ISR (Arduino C++)',d:'Hardware interrupt service routines count encoder pulses on both wheels at maximum speed, unaffected by anything else running in the loop. Accumulated tick counts are batched and sent via Bridge every 20ms.',c:[{l:'Method',v:'attachInterrupt() &#215;4'},{l:'Bridge output',v:'encL, encR tick delta'},{l:'Rate',v:'Batch every 20ms'},{l:'Code pattern',v:'encoderISR_L / _R'}]},
+usp:{t:'Ultrasonic polling (Arduino C++)',d:'Cycles through all 6 HC-SR04 sensors sequentially, issuing a 10&#181;s trigger and timing the echo return. Converts microseconds to centimetres and packs all 6 distances into each sensor packet sent via Bridge.',c:[{l:'Method',v:'pulseIn(echo, HIGH)'},{l:'Bridge output',v:'us[6] array in cm'},{l:'Full cycle rate',v:'Every 50ms'},{l:'Pattern',v:'Async trigger cycle'}]},
+imui:{t:'IMU I&#178;C reading (Arduino C++)',d:'Reads gyroscope Z-axis (yaw rate) and accelerometer X/Y from MPU6050 at 100Hz. A complementary pre-filter runs on the STM32 to smooth noise before data is sent to Python for full EKF fusion.',c:[{l:'Library',v:'MPU6050.h'},{l:'Bridge output',v:'gz, ax, ay values'},{l:'Rate',v:'Every 10ms'},{l:'Pre-filter',v:'Complementary filter'}]},
+spro:{t:'Serial protocol (Arduino C++)',d:'Lightweight ASCII CSV protocol. Uplink: sensor packets every 50ms. Downlink: motor and actuator commands every 20ms. The App Lab Bridge handles the Python side of this protocol automatically &#8212; no manual parsing required.',c:[{l:'Baud rate',v:'115200'},{l:'Uplink format',v:'S,u1..6,eL,eR,gz\\n'},{l:'Downlink format',v:'M,lPWM,rPWM\\n'},{l:'Bridge handles',v:'Parsing + framing'}]},
+bapi:{t:'Python Bridge API (App Lab)',d:'The Arduino App Lab Bridge provides a Python API to read sensor values from and write commands to the Arduino C++ sketch over USB serial. No manual serial parsing needed &#8212; it handles framing, encoding, and reconnection automatically.',c:[{l:'Direction',v:'Bidirectional'},{l:'Python API',v:'bridge.get() / bridge.set()'},{l:'Transport',v:'USB serial 115200'},{l:'Integration',v:'App Lab native'}]},
+bser:{t:'Bidirectional serial transport',d:'Physical USB connection between the Qualcomm Linux MPU and the STM32. Sensor packets flow upward every 50ms. Motor command packets flow downward every 20ms. The Bridge manages the shared channel cleanly.',c:[{l:'Uplink rate',v:'Every 50ms'},{l:'Downlink rate',v:'Every 20ms'},{l:'Baud',v:'115200'},{l:'Port',v:'/dev/ttyUSB0 or ACM0'}]},
+bcmd:{t:'Command parser (C++ side)',d:'Non-blocking parser reads incoming command strings from the Bridge and dispatches to the correct handler &#8212; motor PWM, vacuum speed, or brush speed. Uses Serial.available() to avoid blocking the STM32 main loop.',c:[{l:'Format',v:'TYPE,val1,val2\\n'},{l:'Commands',v:'M=motor V=vacuum B=brush'},{l:'Method',v:'Non-blocking available()'},{l:'Code',v:'parseCommand(buf)'}]},
+bdat:{t:'Data serializer (C++ side)',d:'Packages all sensor readings into a compact CSV string and sends upward via Bridge every 50ms. Includes 6 ultrasonic distances, left/right encoder deltas, IMU gyro Z, and a millisecond timestamp for synchronisation.',c:[{l:'Format',v:'S,u1-6,eL,eR,gz,ts\\n'},{l:'Rate',v:'Every 50ms'},{l:'Packet size',v:'~45 bytes'},{l:'Code',v:'sprintf + Serial.println'}]},
+ekf:{t:'EKF localization (filterpy)',d:'Extended Kalman Filter fuses encoder odometry and IMU heading into a stable [x, y, &#952;] position estimate. Wall detection via side ultrasonics resets drift at room boundaries. The core of all autonomous navigation in ARIA.',c:[{l:'Library',v:'filterpy.kalman.EKF'},{l:'State',v:'[x, y, heading]'},{l:'Inputs',v:'encoder &#916; + IMU gz'},{l:'Drift reset',v:'Side US &lt; 8cm = wall'}]},
+nav:{t:'Coverage navigator',d:'Implements boustrophedon (lawnmower) coverage. Drives forward until the front ultrasonic detects a wall, executes a 90&#176; turn, shifts one robot-width, and continues. Dynamic obstacle re-routing uses a simple potential field method.',c:[{l:'Pattern',v:'Boustrophedon coverage'},{l:'Wall threshold',v:'Front US &lt; 15cm'},{l:'Avoidance',v:'Potential field method'},{l:'Code size',v:'~200 lines Python'}]},
+cln:{t:'Cleaning logic node',d:'The intelligence core. Reads floor type, obstacle class, and debris level from Edge Impulse models and maps them to vacuum, brush, and motor commands. Operates as a 6-state state machine: navigate, clean, avoid, inspect, dock, idle.',c:[{l:'Inputs',v:'floor type, obstacle, debris'},{l:'Outputs',v:'vacuum%, brush%, motor cmds'},{l:'Pattern',v:'6-state state machine'},{l:'Key file',v:'cleaning_logic.py'}]},
+camh:{t:'Camera handler',d:'Dedicated OpenCV thread capturing frames continuously, resizing to 96&#215;96 for Edge Impulse inference and 320&#215;240 for optical flow. Queues frames independently so neither pipeline blocks the other or the navigation loop.',c:[{l:'Library',v:'cv2.VideoCapture'},{l:'AI feed',v:'96&#215;96 &#8594; Edge Impulse'},{l:'Flow feed',v:'320&#215;240 &#8594; Lucas-Kanade'},{l:'Threading',v:'Dedicated capture thread'}]},
+hmap:{t:'Heatmap logger',d:'After each cleaning pass logs debris classification with current robot position. After 5+ runs it builds a predictive dirt model showing which zones get dirtiest fastest. Exported as a matplotlib heatmap for the demo video &#8212; very high visual impact.',c:[{l:'Storage',v:'NumPy grid array'},{l:'Input',v:'position + debris class'},{l:'Output',v:'Matplotlib PNG heatmap'},{l:'Wow factor',v:'Predictive next-clean map'}]},
+flr:{t:'Floor classifier (Edge Impulse)',d:'MobileNetV2 96&#215;96 model classifying 6 floor states: carpet clean/dirty, tile clean/dirty, hardwood clean/dirty. Runs every 500ms on the camera feed. Output directly drives vacuum suction level. Train with 150+ images per class.',c:[{l:'Model',v:'MobileNetV2 96&#215;96'},{l:'Classes',v:'6 (3 surfaces &#215; clean/dirty)'},{l:'Inference rate',v:'Every 500ms'},{l:'Training data',v:'150+ images per class'}]},
+obs:{t:'Obstacle classifier (Edge Impulse)',d:'FOMO (Faster Objects More Objects) model runs at 30fps and classifies obstacles as pet, person, furniture, or toy. Living obstacles trigger a full stop + 5s wait. Non-living get normal re-routing. Uses Roboflow Universe datasets.',c:[{l:'Model',v:'FOMO object detection'},{l:'Classes',v:'pet, person, furniture, toy'},{l:'Rate',v:'30fps real-time'},{l:'Dataset',v:'Roboflow Universe + custom'}]},
+aud:{t:'Audio debris model (Edge Impulse)',d:'MFE spectrogram + neural network listens to the vacuum intake sound. Trained on recordings of dust, crumbs, and gravel being vacuumed. Output feeds the heatmap logger. No other cleaning robot has this feature &#8212; it is completely original.',c:[{l:'Model',v:'MFE spectrogram NN'},{l:'Classes',v:'dust, crumbs, gravel, clear'},{l:'Training data',v:'2 min audio per class'},{l:'Unique factor',v:'No competitor has this'}]},
+mcmd:{t:'Motor commands',d:'Final left/right PWM values sent down through the App Lab Bridge to the STM32. Computed by the navigator and modified by cleaning logic &#8212; slows down on heavy debris, full stop on living obstacles, reverse on cliff detection.',c:[{l:'Format',v:'M,left_pwm,right_pwm'},{l:'Range',v:'-255 to 255 per wheel'},{l:'Rate',v:'Every 20ms'},{l:'Source',v:'Navigator + cleaning logic'}]},
+suct:{t:'Suction adjust',d:'Vacuum motor PWM set by floor classifier output. Carpet dirty = 100%. Carpet clean = 80%. Tile = 60%. Hardwood = 40%. Saves battery and critically prevents scattering light debris on hard floors &#8212; intelligent behaviour no commercial robot has.',c:[{l:'Source',v:'Floor classifier output'},{l:'Carpet dirty',v:'100% PWM'},{l:'Tile',v:'60% PWM'},{l:'Hardwood',v:'40% PWM'}]},
+brsp:{t:'Brush speed',d:'Brush roller PWM set by the audio debris classifier. Heavy debris detected means max brush RPM to dislodge it. Light dust triggers normal speed. Hardwood floor triggers minimum speed to avoid scratching &#8212; all decided on-device in real time.',c:[{l:'Source',v:'Audio debris classifier'},{l:'Heavy debris',v:'100% brush speed'},{l:'Light dust',v:'60% brush speed'},{l:'Hardwood floor',v:'30% brush speed'}]},
+dhm:{t:'Dirt heatmap',d:'Matplotlib grid overlaid on the estimated room map. Updated after every cleaning run. After 5+ runs the predictive layer highlights zones expected to be dirtiest before the next clean begins. Maximum visual impact for the competition demo video.',c:[{l:'Libraries',v:'Matplotlib + NumPy'},{l:'Update trigger',v:'After each cleaning run'},{l:'Prediction active',v:'After 5+ runs'},{l:'Demo impact',v:'Very high &#8212; visual WOW'}]},
+oalrt:{t:'Obstacle alert',d:'When the FOMO model detects a living obstacle, ARIA stops completely, logs the event with current position and a JPEG snapshot, waits 5 seconds, then attempts a new route around the blocked area. All logged to a daily JSON event file.',c:[{l:'Trigger',v:'FOMO: pet or person class'},{l:'Response',v:'Full stop &#8594; wait &#8594; reroute'},{l:'Log entry',v:'Position + JPEG snapshot'},{l:'Wait time',v:'5 seconds'}]},
+};
+
+let sel=null;
+function showDet(id){
+  const data=D[id];if(!data)return;
+  if(sel){const p=document.getElementById('c-'+sel);if(p)p.classList.remove('sel');}
+  const cur=document.getElementById('c-'+id);if(cur)cur.classList.add('sel');
+  sel=id;
+  const dp=document.getElementById('dp');
+  dp.className='det show';
+  dp.innerHTML='<div class="dtt">'+data.t+'</div><div class="ddd">'+data.d+'</div><div class="dg">'+data.c.map(x=>'<div class="dc"><div class="dl">'+x.l.toUpperCase()+'</div><div class="dv">'+x.v+'</div></div>').join('')+'</div>';
+  dp.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function chip(id,n){return '<span class="cp" id="c-'+id+'" onclick="showDet(\''+id+'\')">'+n+'</span>';}
+function render(){
+  const al=document.getElementById('al');let h='';
+  L.forEach(l=>{
+    if(l.type==='cn'){
+      h+='<div class="cn"><div class="cnl"></div><span class="cnt">'+l.label+'</span><div class="cnl"></div></div>';
+    }else if(l.type==='brg'){
+      h+='<div class="brg"><div class="bio"><span>&#8593; sensor data</span><span>&#8595; commands</span></div><div class="bdv"></div><div class="bbc"><div class="bbt">App Lab Bridge &#8212; Python &#8596; Arduino C++</div><div class="cps">'+chip('bapi','Python Bridge API')+chip('bser','Bidirectional serial')+chip('bcmd','Command parser')+chip('bdat','Data serializer')+'</div></div></div>';
+    }else{
+      h+='<div class="lyr"><div class="la" style="background:'+l.acc+';"></div><div class="lb"><div class="lh"><span class="lt" style="background:'+l.tbg+';color:'+l.tc+';">'+l.tag+'</span><span class="ln">'+l.name+'</span><span class="ls">'+l.sub+'</span></div><div class="cps">'+l.chips.map(c=>chip(c.id,c.n)).join('')+'</div></div></div>';
+    }
+  });
+  al.innerHTML=h;
+}
+render();
+</script>
