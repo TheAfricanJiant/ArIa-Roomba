@@ -17,6 +17,11 @@ const ekfDist  = document.getElementById('ekf-dist');
 const mapCanvas   = document.getElementById('map-canvas');
 const mapCtx      = mapCanvas.getContext('2d');
 const coveragePct = document.getElementById('coverage-pct');
+const setGoalBtn  = document.getElementById('set-goal-btn');
+const clearGoalBtn= document.getElementById('clear-goal-btn');
+
+let _settingGoal = false;
+let _goal = null; // {x, y} in cm
 
 // ── Cell state constants (match Python OccupancyGrid uint8 values) ──────────
 const CELL_UNKNOWN  = 0;
@@ -52,6 +57,56 @@ document.addEventListener('DOMContentLoaded', () => {
     powerBtn.addEventListener('click', () => socket.emit('toggle_power', {}));
     speedSlider.addEventListener('input',  (e) => { speedVal.textContent = e.target.value; });
     speedSlider.addEventListener('change', (e) => socket.emit('set_speed', { speed: parseInt(e.target.value) }));
+
+    // Goal buttons
+    setGoalBtn.addEventListener('click', () => {
+        _settingGoal = true;
+        mapCanvas.style.cursor = 'crosshair';
+        setGoalBtn.style.background = '#005e60'; // darker active state
+        setGoalBtn.textContent = 'Click map to set goal...';
+    });
+
+    clearGoalBtn.addEventListener('click', () => {
+        _goal = null;
+        socket.emit('clear_goal', {});
+        clearGoalBtn.style.display = 'none';
+        _settingGoal = false;
+        mapCanvas.style.cursor = 'default';
+        setGoalBtn.style.background = '#008184';
+        setGoalBtn.textContent = '📍 Set Goal';
+        if (_lastMapData) _drawMap(_lastMapData);
+    });
+
+    // Map click handler
+    mapCanvas.addEventListener('click', (e) => {
+        if (!_settingGoal) return;
+        
+        // Calculate canvas coordinates
+        const rect = mapCanvas.getBoundingClientRect();
+        // The canvas may be scaled via CSS, so we need to map click px to actual internal canvas size
+        const scaleX = mapCanvas.width / rect.width;
+        const scaleY = mapCanvas.height / rect.height;
+        const clickX = (e.clientX - rect.left) * scaleX;
+        const clickY = (e.clientY - rect.top) * scaleY;
+
+        // Convert canvas coordinates to world coordinates (cm)
+        const cx = _latestPose ? _latestPose.x_cm : 0;
+        const cy = _latestPose ? _latestPose.y_cm : 0;
+        const worldX = cx + (clickX - MAP_PX / 2) / PX_PER_CM;
+        const worldY = cy - (clickY - MAP_PX / 2) / PX_PER_CM; // Y is inverted
+
+        _goal = { x: worldX, y: worldY };
+        socket.emit('set_goal', _goal);
+        
+        // Reset UI
+        _settingGoal = false;
+        mapCanvas.style.cursor = 'default';
+        setGoalBtn.style.background = '#008184';
+        setGoalBtn.textContent = '📍 Set Goal';
+        clearGoalBtn.style.display = 'inline-block';
+        
+        if (_lastMapData) _drawMap(_lastMapData);
+    });
 });
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -61,6 +116,13 @@ function updateUI(state) {
     powerText.textContent = isOn ? 'MOTORS ON' : 'MOTORS OFF';
     speedSlider.value    = state.speed;
     speedVal.textContent = state.speed;
+    
+    // Auto-clear goal UI if robot stops navigating
+    if (!state.navigating && _goal) {
+        _goal = null;
+        clearGoalBtn.style.display = 'none';
+        if (_lastMapData) _drawMap(_lastMapData);
+    }
 }
 
 function updateTelemetry(data) {
@@ -214,7 +276,29 @@ function _drawMap(m) {
     mapCtx.stroke();
     mapCtx.restore();
 
-    // 7 ── Coordinate label (bottom-left)
+    // 7 ── Goal Marker
+    if (_goal) {
+        const gp = w2p(_goal.x, _goal.y);
+        mapCtx.beginPath();
+        mapCtx.arc(gp.x, gp.y, 8, 0, Math.PI * 2);
+        mapCtx.fillStyle = '#4CAF50';
+        mapCtx.fill();
+        mapCtx.strokeStyle = '#FFFFFF';
+        mapCtx.lineWidth = 2;
+        mapCtx.stroke();
+        
+        // Draw line from robot to goal
+        mapCtx.beginPath();
+        mapCtx.moveTo(MAP_PX / 2, MAP_PX / 2);
+        mapCtx.lineTo(gp.x, gp.y);
+        mapCtx.strokeStyle = 'rgba(76, 175, 80, 0.5)';
+        mapCtx.lineWidth = 2;
+        mapCtx.setLineDash([5, 5]);
+        mapCtx.stroke();
+        mapCtx.setLineDash([]);
+    }
+
+    // 8 ── Coordinate label (bottom-left)
     mapCtx.fillStyle = 'rgba(0,0,0,0.5)';
     mapCtx.font      = '11px monospace';
     const lbl = _latestPose

@@ -82,8 +82,12 @@ SPDX-License-Identifier: MPL-2.0
                     <canvas id="map-canvas" style="display: block; width: 100%; image-rendering: pixelated;"></canvas>
                 </div>
                 <p class="instruction-text" style="margin: 8px 16px; text-align: center;">
-                    🟩 Cleaned &nbsp;|&nbsp; ⬛ Wall &nbsp;|&nbsp; ⬜ Unknown &nbsp;|&nbsp; 🔴 Trajectory &nbsp;|&nbsp; 🔵 Robot
+                    🟩 Cleaned &nbsp;|&nbsp; ⬛ Wall &nbsp;|&nbsp; ⬜ Unknown &nbsp;|&nbsp; 🔴 Trajectory &nbsp;|&nbsp; 🔵 Robot &nbsp;|&nbsp; 📍 Goal
                 </p>
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <button id="set-goal-btn" class="tab-btn" style="background: #008184; color: white;">📍 Set Goal</button>
+                    <button id="clear-goal-btn" class="tab-btn" style="display: none; background: #e53935; color: white;">❌ Clear Goal</button>
+                </div>
             </div>
         </div>
 

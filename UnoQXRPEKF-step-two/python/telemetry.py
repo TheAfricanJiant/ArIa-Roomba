@@ -175,14 +175,15 @@ def _run_pose_step() -> None:
         if _EKF_AVAILABLE and ekf is not None:
             if delta_l != 0 or delta_r != 0:
                 ekf.predict(delta_l, delta_r)
-            if dt > 0:
-                ekf.correct_imu(telemetry["gyro_z"], dt)
+                if dt > 0:
+                    ekf.correct_imu(telemetry["gyro_z"], dt)
             x, y, _ = ekf.pose
             if grid is not None:
                 grid.mark_cleaned(x, y)   # always mark current cell
         else:
             # Fallback: RTR model with Odometry-IMU fusion
-            _dr.update(delta_l, delta_r, telemetry["gyro_z"], dt)
+            if delta_l != 0 or delta_r != 0:
+                _dr.update(delta_l, delta_r, telemetry["gyro_z"], dt)
             x, y, _ = _dr.pose
             _sgrid.mark_cleaned(x, y)     # always mark current cell
     except Exception as e:
