@@ -193,6 +193,7 @@ def _run_pose_step() -> None:
 def telemetry_loop(ui) -> None:
     """Background thread: read serial, run EKF, push updates to WebUI."""
     global _last_map_push
+    print("TELEMETRY THREAD STARTED! 🚀", flush=True)
 
     while True:
         try:
@@ -215,7 +216,7 @@ def telemetry_loop(ui) -> None:
                     if snap:
                         ui.send_message('map_update', snap)
                         # Hard print to bypass logging configuration issues
-                        print(f"BROADCASTING MAP & POSE -> {get_pose()}")
+                        print(f"BROADCASTING MAP & POSE -> {get_pose()}", flush=True)
         except Exception as e:
             print(f"CRITICAL THREAD ERROR: {e}")
             log.error(f"telemetry_loop error: {e}")
