@@ -86,7 +86,7 @@ function updateEKF(e) {
             _trajectory.push({ x: e.x_cm, y: e.y_cm });
         }
     }
-    if (_lastMapData) _drawMap(_lastMapData);
+    _drawMap(_lastMapData); // always redraw — works even without map data
 }
 
 // ── Map state ─────────────────────────────────────────────────────────────────
@@ -116,7 +116,13 @@ function renderMap(m) {
 }
 
 function _drawMap(m) {
-    const { cols, rows, data, origin_col, origin_row, cell_cm, coverage } = m;
+    // m can be null on first render — draw background/trajectory/robot without grid
+    const cols       = m ? m.cols       : 33;
+    const rows       = m ? m.rows       : 33;
+    const data       = m ? m.data       : null;
+    const origin_col = m ? m.origin_col : 16;
+    const origin_row = m ? m.origin_row : 16;
+    const cell_cm    = m ? m.cell_cm    : 30;
 
     mapCanvas.width  = MAP_PX;
     mapCanvas.height = MAP_PX;
@@ -125,18 +131,19 @@ function _drawMap(m) {
     mapCtx.fillStyle = '#E8EEEE';
     mapCtx.fillRect(0, 0, MAP_PX, MAP_PX);
 
-    // 2 ── Occupancy grid cells (only non-UNKNOWN)
+    // 2 ── Occupancy grid cells (only non-UNKNOWN, skip if no data)
     const cellPx = cell_cm * PX_PER_CM;
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            const val = data[r][c];
-            if (val === CELL_UNKNOWN) continue;
-            // Convert grid (row, col) → world cm (cell centre)
-            const wx = (c - origin_col) * cell_cm + cell_cm / 2;
-            const wy = (origin_row - r) * cell_cm - cell_cm / 2;
-            const p  = w2p(wx, wy);
-            mapCtx.fillStyle = cellColor(val);
-            mapCtx.fillRect(p.x - cellPx / 2, p.y - cellPx / 2, cellPx, cellPx);
+    if (data) {
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const val = data[r][c];
+                if (val === CELL_UNKNOWN) continue;
+                const wx = (c - origin_col) * cell_cm + cell_cm / 2;
+                const wy = (origin_row - r) * cell_cm - cell_cm / 2;
+                const p  = w2p(wx, wy);
+                mapCtx.fillStyle = cellColor(val);
+                mapCtx.fillRect(p.x - cellPx / 2, p.y - cellPx / 2, cellPx, cellPx);
+            }
         }
     }
 
