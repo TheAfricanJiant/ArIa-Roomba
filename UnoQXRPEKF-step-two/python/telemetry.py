@@ -16,14 +16,27 @@ class SimpleDeadReckoning:
         self.y = 0.0
         self.theta = 0.0
 
-    def update(self, delta_l: int, delta_r: int):
+    def update(self, delta_l: int, delta_r: int, gyro_z: float, dt: float):
         d_l = delta_l * self.CM_PER_TICK
         d_r = delta_r * self.CM_PER_TICK
         d_c = (d_l + d_r) * 0.5
-        d_theta = (d_r - d_l) / self.WHEEL_BASE
-        self.theta = (self.theta + d_theta + math.pi) % (2 * math.pi) - math.pi
+        
+        # 1. Use GYRO for rotation, not wheels! (Odometry-IMU fusion)
+        # Discard the inaccurate (d_r - d_l) / WHEEL_BASE
+        d_theta = gyro_z * dt
+        
+        # 2. RTR Model: Rotate half, Translate, Rotate half
+        half_theta = d_theta * 0.5
+        
+        # Rotate first half
+        self.theta = (self.theta + half_theta + math.pi) % (2 * math.pi) - math.pi
+        
+        # Translate
         self.x += d_c * math.cos(self.theta)
         self.y += d_c * math.sin(self.theta)
+        
+        # Rotate second half
+        self.theta = (self.theta + half_theta + math.pi) % (2 * math.pi) - math.pi
 
     @property
     def pose(self):
@@ -168,9 +181,9 @@ def _run_pose_step() -> None:
             if grid is not None:
                 grid.mark_cleaned(x, y)
         else:
-            # Fallback: simple dead-reckoning
-            if delta_l != 0 or delta_r != 0:
-                _dr.update(delta_l, delta_r)
+            # Fallback: RTR model with Odometry-IMU fusion
+            if delta_l != 0 or delta_r != 0 or dt > 0:
+                _dr.update(delta_l, delta_r, telemetry["gyro_z"], dt)
             x, y, _ = _dr.pose
             _sgrid.mark_cleaned(x, y)
     except Exception as e:
