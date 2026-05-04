@@ -214,9 +214,10 @@ def telemetry_loop(ui) -> None:
                     snap = get_grid_snapshot()
                     if snap:
                         ui.send_message('map_update', snap)
-                        # Debug log to terminal to confirm it's broadcasting
-                        log.info(f"Broadcasted Map & Pose. Pose: {get_pose()}")
+                        # Hard print to bypass logging configuration issues
+                        print(f"BROADCASTING MAP & POSE -> {get_pose()}")
         except Exception as e:
+            print(f"CRITICAL THREAD ERROR: {e}")
             log.error(f"telemetry_loop error: {e}")
 
         time.sleep(0.05)
