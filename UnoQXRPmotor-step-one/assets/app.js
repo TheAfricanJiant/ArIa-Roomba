@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function updateUI(state) {
     const isOn = state.motors_on;
-    powerBtn.className = isOn ? 'power-on' : 'power-off';
+    powerBtn.className = isOn ? 'led-on' : 'led-off';
     powerText.textContent = isOn ? 'MOTORS ON' : 'MOTORS OFF';
     
     speedSlider.value = state.speed;

@@ -90,19 +90,7 @@ def telemetry_loop():
                         ui.send_message('telemetry_update', telemetry)
             except Exception as e:
                 pass
-        else:
-            # Dummy fallback if no board connected
-            if state["motors_on"]:
-                telemetry["enc_l"] += int(state["speed"] / 10)
-                telemetry["enc_r"] += int(state["speed"] / 10)
-                telemetry["gyro_z"] = random.uniform(-0.5, 0.5)
-                telemetry["accel_x"] = random.uniform(-1.0, 1.0)
-            else:
-                telemetry["gyro_z"] = 0.0
-                telemetry["accel_x"] = 0.0
-                
-            ui.send_message('telemetry_update', telemetry)
-            time.sleep(0.1)
+        time.sleep(0.1)
 
 ui = WebUI()
 ui.on_message('toggle_power', toggle_power)

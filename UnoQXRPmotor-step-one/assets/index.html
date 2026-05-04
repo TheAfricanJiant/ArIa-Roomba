@@ -1,61 +1,54 @@
+<!--
+SPDX-FileCopyrightText: Copyright (C) Arduino s.r.l. and/or its affiliated companies
+
+SPDX-License-Identifier: MPL-2.0
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ARIA Roomba Dashboard</title>
+    <title>ARIA Roomba Controller</title>
     <link rel="icon" type="image/png" href="./img/favicon.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" type="text/css" href="style.css">
 </head>
 <body>
-    <div class="dashboard">
-        <header>
-            <h1>ARIA <span>DASHBOARD</span></h1>
-            <p>XRP Motor & Sensor Telemetry</p>
-        </header>
+    <div>
+        <div class="header">
+            <h1 class="arduino-text">ARIA Roomba Controller</h1>
+            <img class="arduino-logo" src="./img/RGB-Arduino-Logo_Color Inline Loop.svg" alt="Arduino Logo">
+        </div>
 
-        <main class="grid-container">
-            <!-- Motor Controls -->
-            <section class="glass-card controls-card">
-                <h2>Motor Control</h2>
-                
-                <div class="power-section">
-                    <button id="motor-power-btn" class="power-off">
-                        <span id="power-text">MOTORS OFF</span>
-                    </button>
-                </div>
+        <div class="container">
+            <!-- LED Button with integrated text -->
+            <div class="led-container">
+                <button id="motor-power-btn" class="led-off">
+                    <span id="power-text">MOTORS OFF</span>
+                </button>
+            </div>
+            
+            <p class="instruction-text" style="margin-bottom: 20px;">Click to toggle motors 👆</p>
 
-                <div class="speed-section">
-                    <label for="speed-slider">Target Speed: <span id="speed-val">160</span></label>
-                    <input type="range" id="speed-slider" min="0" max="255" value="160">
-                </div>
-            </section>
+            <div style="margin: 30px auto; max-width: 300px; text-align: left;">
+                <label for="speed-slider" class="instruction-text" style="display: block; margin-bottom: 10px;">
+                    <strong>Target Speed:</strong> <span id="speed-val">160</span>
+                </label>
+                <input type="range" id="speed-slider" min="0" max="255" value="160" style="width: 100%;">
+            </div>
 
-            <!-- Sensor Telemetry -->
-            <section class="glass-card telemetry-card">
-                <h2>Live Telemetry</h2>
-                
-                <div class="sensor-grid">
-                    <div class="sensor-item">
-                        <span class="label">Encoder L</span>
-                        <span class="value" id="enc-l">0</span>
-                    </div>
-                    <div class="sensor-item">
-                        <span class="label">Encoder R</span>
-                        <span class="value" id="enc-r">0</span>
-                    </div>
-                    <div class="sensor-item full-width">
-                        <span class="label">IMU Accel (m/s²)</span>
-                        <span class="value" id="imu-accel">X: 0.00 | Y: 0.00 | Z: 0.00</span>
-                    </div>
-                    <div class="sensor-item full-width">
-                        <span class="label">IMU Gyro (rad/s)</span>
-                        <span class="value" id="imu-gyro">X: 0.00 | Y: 0.00 | Z: 0.00</span>
-                    </div>
-                </div>
-            </section>
-        </main>
+            <div style="margin-top: 40px; text-align: left; background: #DAE3E3; padding: 20px; border-radius: 8px;">
+                <h3 class="arduino-text" style="font-size: 16px; margin-bottom: 15px;">Live Telemetry</h3>
+                <p class="instruction-text"><strong>Encoder L:</strong> <span id="enc-l">0</span></p>
+                <p class="instruction-text"><strong>Encoder R:</strong> <span id="enc-r">0</span></p>
+                <p class="instruction-text"><strong>IMU Accel:</strong> <span id="imu-accel">X: 0.00 | Y: 0.00 | Z: 0.00</span></p>
+                <p class="instruction-text"><strong>IMU Gyro:</strong> <span id="imu-gyro">X: 0.00 | Y: 0.00 | Z: 0.00</span></p>
+            </div>
+
+            <!-- Error message container -->
+            <div id="error-container" class="error-message" style="display: none;"></div>
+        </div>
     </div>
 
     <script src="libs/socket.io.min.js"></script>
