@@ -53,6 +53,11 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('telemetry_update', (d) => updateTelemetry(d));
     socket.on('ekf_update',       (e) => updateEKF(e));
     socket.on('map_update',       (m) => renderMap(m));
+    
+    socket.on('path_update', (path) => {
+        _waypoints = path;
+        if (_lastMapData) _drawMap(_lastMapData);
+    });
 
     socket.on('disconnect', () => {
         const err = document.getElementById('error-container');
@@ -347,7 +352,8 @@ function _drawMap(m) {
     if (_waypoints.length > 0) {
         // Draw lines
         mapCtx.beginPath();
-        mapCtx.moveTo(MAP_PX / 2, MAP_PX / 2); // Start from robot
+        let lastPt = {x: MAP_PX / 2, y: MAP_PX / 2}; // Robot center
+        mapCtx.moveTo(lastPt.x, lastPt.y);
         _waypoints.forEach(pt => {
             const p = w2p(pt.x, pt.y);
             mapCtx.lineTo(p.x, p.y);
@@ -357,6 +363,33 @@ function _drawMap(m) {
         mapCtx.setLineDash([5, 5]);
         mapCtx.stroke();
         mapCtx.setLineDash([]);
+        
+        // Draw directional arrows
+        lastPt = {x: MAP_PX / 2, y: MAP_PX / 2};
+        mapCtx.beginPath();
+        _waypoints.forEach(pt => {
+            const p = w2p(pt.x, pt.y);
+            const dx = p.x - lastPt.x;
+            const dy = p.y - lastPt.y;
+            const angle = Math.atan2(dy, dx);
+            // Draw arrow head near the destination point (or midpoint)
+            const mx = lastPt.x + dx * 0.6;
+            const my = lastPt.y + dy * 0.6;
+            
+            mapCtx.save();
+            mapCtx.translate(mx, my);
+            mapCtx.rotate(angle);
+            mapCtx.moveTo(0, 0);
+            mapCtx.lineTo(-8, -6);
+            mapCtx.moveTo(0, 0);
+            mapCtx.lineTo(-8, 6);
+            mapCtx.restore();
+            
+            lastPt = p;
+        });
+        mapCtx.strokeStyle = 'rgba(76, 175, 80, 0.9)';
+        mapCtx.lineWidth = 2;
+        mapCtx.stroke();
 
         // Draw points
         _waypoints.forEach((pt, i) => {

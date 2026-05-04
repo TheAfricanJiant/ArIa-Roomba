@@ -83,6 +83,7 @@ def set_path(client, data):
     state["navigating"] = True
     state["motors_on"] = True
     ui.send_message('state_update', get_state())
+    ui.send_message('path_update', [{"x": p[0], "y": p[1]} for p in path])
     log.info(f"Path set with {len(path)} waypoints")
 
 
@@ -120,6 +121,7 @@ def clean_zone(client, data):
     state["navigating"] = True
     state["motors_on"] = True
     ui.send_message('state_update', get_state())
+    ui.send_message('path_update', [{"x": p[0], "y": p[1]} for p in path])
     log.info(f"Zone cleaning started with {len(path)} waypoints")
 
 
@@ -135,6 +137,7 @@ def clear_goal(client, data):
 
 def navigation_loop():
     global state
+    last_waypoints_count = -1
     while True:
         if state["navigating"] and state["motors_on"]:
             pose = telemetry.get_pose()
@@ -145,11 +148,23 @@ def navigation_loop():
                 # Send the commands to the motor
                 motor.send_motor_cmd(l_speed, r_speed)
                 
+                # Broadcast updated path if it changed
+                current_count = len(nav.waypoints)
+                if current_count != last_waypoints_count:
+                    path_to_send = []
+                    if nav.goal:
+                        path_to_send.append({"x": nav.goal[0], "y": nav.goal[1]})
+                    for p in nav.waypoints:
+                        path_to_send.append({"x": p[0], "y": p[1]})
+                    ui.send_message('path_update', path_to_send)
+                    last_waypoints_count = current_count
+                
                 if arrived:
                     state["navigating"] = False
                     state["motors_on"] = False
                     motor.send_motor_cmd(0, 0)
                     ui.send_message('state_update', get_state())
+                    ui.send_message('path_update', []) # clear path
         time.sleep(0.05)  # 20 Hz
 
 
