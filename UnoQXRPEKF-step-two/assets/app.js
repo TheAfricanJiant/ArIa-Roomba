@@ -18,6 +18,8 @@ const mapCanvas    = document.getElementById('map-canvas');
 const mapCtx       = mapCanvas.getContext('2d');
 const coveragePct  = document.getElementById('coverage-pct');
 
+const socketDebug  = document.getElementById('socket-debug');
+
 // ── Grid constants ──────────────────────────────────────────────────────────
 // Cell values from OccupancyGrid
 const CELL_UNKNOWN = 127;
@@ -91,6 +93,10 @@ function updateEKF(e) {
     ekfTheta.textContent = `${deg}°`;
     const dist = Math.sqrt(e.x_cm ** 2 + e.y_cm ** 2).toFixed(2);
     ekfDist.textContent  = dist;
+    
+    if (socketDebug) {
+        socketDebug.textContent = `LAST EKF: ${JSON.stringify(e)}`;
+    }
 }
 
 // ── Map rendering ────────────────────────────────────────────────────────────
@@ -99,6 +105,10 @@ let _latestPose = null; // updated by ekf_update for live robot marker
 socket.on('ekf_update', (e) => { _latestPose = e; });
 
 function renderMap(m) {
+    if (socketDebug && Math.random() < 0.1) {
+        // Only print map occasionally to avoid flashing too fast
+        socketDebug.textContent = `LAST MAP: cols=${m.cols}, coverage=${m.coverage}%`;
+    }
     const { cols, rows, data, origin_col, origin_row, coverage, cell_cm } = m;
 
     // Resize canvas to match grid

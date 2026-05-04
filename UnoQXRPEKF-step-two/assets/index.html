@@ -111,6 +111,11 @@ SPDX-License-Identifier: MPL-2.0
                         </div>
                     </div>
                 </div>
+                <!-- ON SCREEN DEBUG -->
+                <div class="telemetry-box" style="margin-top: 10px; background: #ffebee;">
+                    <h3 class="arduino-text section-title" style="color: #c62828;">Socket Debug</h3>
+                    <p class="instruction-text" id="socket-debug" style="font-family: monospace; font-size: 10px; word-wrap: break-word;">Waiting for packets...</p>
+                </div>
                 <div class="telemetry-box" style="margin-top: 20px;">
                     <h3 class="arduino-text section-title">State Confidence</h3>
                     <p class="instruction-text">The EKF fuses encoder dead-reckoning with IMU gyro to reduce heading drift. The longer the robot runs, the more accumulated position uncertainty grows — until a wall snap resets it.</p>
