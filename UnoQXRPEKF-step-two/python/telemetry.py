@@ -1,10 +1,68 @@
 import time
+import math
 import logging
 import serial_bridge
 
 log = logging.getLogger(__name__)
 
-# ── Try to load EKF/Grid (requires filterpy + numpy on the Uno Q) ─────────────
+# ── Simple dead-reckoning fallback (no dependencies) ─────────────────────────
+class SimpleDeadReckoning:
+    """Minimal encoder-only pose tracker. No filterpy required."""
+    CM_PER_TICK  = (math.pi * 6.5) / 360  # wheel circumference / ticks
+    WHEEL_BASE   = 25.0                    # cm between wheels
+
+    def __init__(self):
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
+
+    def update(self, delta_l: int, delta_r: int):
+        d_l = delta_l * self.CM_PER_TICK
+        d_r = delta_r * self.CM_PER_TICK
+        d_c = (d_l + d_r) * 0.5
+        d_theta = (d_r - d_l) / self.WHEEL_BASE
+        self.theta = (self.theta + d_theta + math.pi) % (2 * math.pi) - math.pi
+        self.x += d_c * math.cos(self.theta)
+        self.y += d_c * math.sin(self.theta)
+
+    @property
+    def pose(self):
+        return self.x, self.y, self.theta
+
+# ── Simple grid tracker (no numpy) ───────────────────────────────────────────
+class SimpleGrid:
+    CELL_CM = 30
+    SIZE    = 33
+    ORIGIN  = 16
+    UNKNOWN = 127
+    CLEANED = 0
+
+    def __init__(self):
+        self._data = [[self.UNKNOWN] * self.SIZE for _ in range(self.SIZE)]
+        self._cleaned = 0
+
+    def mark_cleaned(self, x_cm: float, y_cm: float):
+        col = self.ORIGIN + int(x_cm / self.CELL_CM)
+        row = self.ORIGIN - int(y_cm / self.CELL_CM)
+        if 0 <= col < self.SIZE and 0 <= row < self.SIZE:
+            if self._data[row][col] == self.UNKNOWN:
+                self._cleaned += 1
+            self._data[row][col] = self.CLEANED
+
+    def coverage_percent(self) -> float:
+        total = self.SIZE * self.SIZE
+        return round(100.0 * self._cleaned / total, 1)
+
+    def snapshot(self) -> dict:
+        return {
+            "cols": self.SIZE, "rows": self.SIZE,
+            "cell_cm": self.CELL_CM,
+            "origin_col": self.ORIGIN, "origin_row": self.ORIGIN,
+            "data": self._data,
+            "coverage": self.coverage_percent(),
+        }
+
+# ── Try to load full EKF/Grid (requires filterpy + numpy) ────────────────────
 _EKF_AVAILABLE = False
 ekf = None
 grid = None
@@ -12,16 +70,20 @@ CELL_SIZE_CM = 30
 GRID_COLS = 33
 GRID_ROWS = 33
 
+# Always create fallback objects (work without any deps)
+_dr  = SimpleDeadReckoning()
+_sgrid = SimpleGrid()
+
 try:
     from aria import ARIALocalization, OccupancyGrid
     from aria.config import CELL_SIZE_CM, GRID_COLS, GRID_ROWS
     ekf  = ARIALocalization(start_x=0.0, start_y=0.0, start_theta=0.0)
     grid = OccupancyGrid()
     _EKF_AVAILABLE = True
-    log.info("ARIA EKF + OccupancyGrid loaded successfully.")
+    log.info("ARIA EKF + OccupancyGrid loaded — full accuracy mode.")
 except Exception as e:
-    log.warning(f"ARIA unavailable ({e}). Raw telemetry will still stream.")
-    log.warning("Fix: pip install -r python/requirements.txt")
+    log.warning(f"ARIA unavailable ({e}). Using simple dead-reckoning fallback.")
+    log.warning("Upgrade: pip install -r python/requirements.txt")
 
 # ── Raw sensor state ──────────────────────────────────────────────────────────
 telemetry = {
@@ -37,26 +99,28 @@ _last_map_push: float = 0.0
 MAP_PUSH_INTERVAL_S = 1.0
 
 
-def get_ekf_pose() -> dict:
-    if not _EKF_AVAILABLE or ekf is None:
-        return {"x_cm": 0.0, "y_cm": 0.0, "theta_rad": 0.0}
-    x, y, theta = ekf.pose
+def get_pose() -> dict:
+    """Return pose from EKF if available, otherwise simple dead-reckoning."""
+    if _EKF_AVAILABLE and ekf is not None:
+        x, y, theta = ekf.pose
+    else:
+        x, y, theta = _dr.pose
     return {"x_cm": round(x, 2), "y_cm": round(y, 2), "theta_rad": round(theta, 4)}
 
 
 def get_grid_snapshot() -> dict:
-    if not _EKF_AVAILABLE or grid is None:
-        return {}
-    data = grid._grid.tolist()
-    return {
-        "cols": GRID_COLS,
-        "rows": GRID_ROWS,
-        "cell_cm": CELL_SIZE_CM,
-        "origin_col": grid._origin_col,
-        "origin_row": grid._origin_row,
-        "data": data,
-        "coverage": round(grid.coverage_percent(), 1),
-    }
+    """Return grid snapshot from full grid or simple fallback."""
+    if _EKF_AVAILABLE and grid is not None:
+        data = grid._grid.tolist()
+        return {
+            "cols": GRID_COLS, "rows": GRID_ROWS,
+            "cell_cm": CELL_SIZE_CM,
+            "origin_col": grid._origin_col,
+            "origin_row": grid._origin_row,
+            "data": data,
+            "coverage": round(grid.coverage_percent(), 1),
+        }
+    return _sgrid.snapshot()
 
 
 def _parse_line(line: str) -> bool:
@@ -81,11 +145,9 @@ def _parse_line(line: str) -> bool:
         return False
 
 
-def _run_ekf_step() -> None:
-    """Run EKF predict + correct + grid update. No-op if EKF unavailable."""
+def _run_pose_step() -> None:
+    """Update pose estimate and grid. Always runs (EKF or fallback)."""
     global _last_enc_l, _last_enc_r, _last_ts
-    if not _EKF_AVAILABLE or ekf is None:
-        return
 
     now = time.time()
     dt = now - _last_ts
@@ -97,15 +159,22 @@ def _run_ekf_step() -> None:
     _last_enc_r = telemetry["enc_r"]
 
     try:
-        if delta_l != 0 or delta_r != 0:
-            ekf.predict(delta_l, delta_r)
-        if dt > 0:
-            ekf.correct_imu(telemetry["gyro_z"], dt)
-        x, y, _ = ekf.pose
-        if grid is not None:
-            grid.mark_cleaned(x, y)
+        if _EKF_AVAILABLE and ekf is not None:
+            if delta_l != 0 or delta_r != 0:
+                ekf.predict(delta_l, delta_r)
+            if dt > 0:
+                ekf.correct_imu(telemetry["gyro_z"], dt)
+            x, y, _ = ekf.pose
+            if grid is not None:
+                grid.mark_cleaned(x, y)
+        else:
+            # Fallback: simple dead-reckoning
+            if delta_l != 0 or delta_r != 0:
+                _dr.update(delta_l, delta_r)
+            x, y, _ = _dr.pose
+            _sgrid.mark_cleaned(x, y)
     except Exception as e:
-        log.error(f"EKF step error: {e}")
+        log.error(f"Pose step error: {e}")
 
 
 def telemetry_loop(ui) -> None:
@@ -121,20 +190,17 @@ def telemetry_loop(ui) -> None:
                     if not line:
                         break
                     if _parse_line(line):
-                        _run_ekf_step()
-                        # Always send raw telemetry regardless of EKF status
+                        _run_pose_step()
                         ui.send_message('telemetry_update', telemetry)
-                        if _EKF_AVAILABLE:
-                            ui.send_message('ekf_update', get_ekf_pose())
+                        ui.send_message('ekf_update', get_pose())
 
                 # Push grid snapshot every MAP_PUSH_INTERVAL_S
-                if _EKF_AVAILABLE:
-                    now = time.time()
-                    if now - _last_map_push >= MAP_PUSH_INTERVAL_S:
-                        _last_map_push = now
-                        snap = get_grid_snapshot()
-                        if snap:
-                            ui.send_message('map_update', snap)
+                now = time.time()
+                if now - _last_map_push >= MAP_PUSH_INTERVAL_S:
+                    _last_map_push = now
+                    snap = get_grid_snapshot()
+                    if snap:
+                        ui.send_message('map_update', snap)
         except Exception as e:
             log.error(f"telemetry_loop error: {e}")
 
