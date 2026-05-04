@@ -143,14 +143,14 @@
 ## PHASE 7 — Web UI Dashboard (Week 7)
 *The face of the project. Judges will see this.*
 
-- [ ] Live occupancy grid map rendered in browser (Canvas / SVG)
+- [x] Live occupancy grid map rendered in browser (Canvas / SVG)
 - [ ] Live sensor readouts panel (ultrasonic distances, battery %, coverage %)
-- [ ] Live EKF position dot overlaid on map
+- [x] Live EKF position dot overlaid on map
 - [ ] Dirt heatmap overlay toggle (show/hide)
-- [ ] Coverage percentage progress bar
+- [x] Coverage percentage progress bar
 - [ ] Robot status indicator (IDLE / NAV / CLEAN / AVOID / DOCK)
 - [ ] **Manual control panel** (see Phase 8)
-- [ ] Clean, mobile-friendly layout using existing Arduino CSS theme
+- [x] Clean, mobile-friendly layout using existing Arduino CSS theme
 
 ---
 

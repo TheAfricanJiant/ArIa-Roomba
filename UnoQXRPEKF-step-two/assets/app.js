@@ -101,8 +101,22 @@ function updateEKF(e) {
 
 // ── Map rendering ────────────────────────────────────────────────────────────
 let _latestPose = null; // updated by ekf_update for live robot marker
+let _trajectory = [];   // historical path points
 
-socket.on('ekf_update', (e) => { _latestPose = e; });
+socket.on('ekf_update', (e) => { 
+    _latestPose = e; 
+    
+    // Append to trajectory if moved > 1cm to keep rendering fast
+    if (_trajectory.length === 0) {
+        _trajectory.push({x: e.x_cm, y: e.y_cm});
+    } else {
+        const last = _trajectory[_trajectory.length - 1];
+        const dist = Math.hypot(e.x_cm - last.x, e.y_cm - last.y);
+        if (dist > 1.0) {
+            _trajectory.push({x: e.x_cm, y: e.y_cm});
+        }
+    }
+});
 
 function renderMap(m) {
     if (socketDebug && Math.random() < 0.1) {
@@ -138,6 +152,22 @@ function renderMap(m) {
         mapCtx.beginPath();
         mapCtx.moveTo(c * cellPx, 0);
         mapCtx.lineTo(c * cellPx, rows * cellPx);
+        mapCtx.stroke();
+    }
+
+    // Draw trajectory path
+    if (_trajectory.length > 1) {
+        mapCtx.beginPath();
+        mapCtx.strokeStyle = 'rgba(233, 30, 99, 0.8)'; // Pink/Red line
+        mapCtx.lineWidth = 2;
+        
+        for (let i = 0; i < _trajectory.length; i++) {
+            const pt = _trajectory[i];
+            const pxX = (origin_col + pt.x / cell_cm) * cellPx;
+            const pxY = (origin_row - pt.y / cell_cm) * cellPx;
+            if (i === 0) mapCtx.moveTo(pxX, pxY);
+            else mapCtx.lineTo(pxX, pxY);
+        }
         mapCtx.stroke();
     }
 
