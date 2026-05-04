@@ -1,4 +1,4 @@
-// ── Element references ─────────────────────────────────────────────────────
+// ── Element references ──────────────────────────────────────────────────────
 const powerBtn    = document.getElementById('motor-power-btn');
 const powerText   = document.getElementById('power-text');
 const speedSlider = document.getElementById('speed-slider');
@@ -14,24 +14,21 @@ const ekfY     = document.getElementById('ekf-y');
 const ekfTheta = document.getElementById('ekf-theta');
 const ekfDist  = document.getElementById('ekf-dist');
 
-const mapCanvas    = document.getElementById('map-canvas');
-const mapCtx       = mapCanvas.getContext('2d');
-const coveragePct  = document.getElementById('coverage-pct');
+const mapCanvas   = document.getElementById('map-canvas');
+const mapCtx      = mapCanvas.getContext('2d');
+const coveragePct = document.getElementById('coverage-pct');
 
-const socketDebug  = document.getElementById('socket-debug'); // may be null now — that's fine
-
-// ── Grid constants (MUST match Python OccupancyGrid uint8 values) ───────────
-// occupancy_grid.py:  UNKNOWN=0, FREE=1, CLEANED=2, WALL=3, OBSTACLE=4
+// ── Cell state constants (match Python OccupancyGrid uint8 values) ──────────
 const CELL_UNKNOWN  = 0;
 const CELL_FREE     = 1;
 const CELL_CLEANED  = 2;
 const CELL_WALL     = 3;
 const CELL_OBSTACLE = 4;
 
-// ── Socket ──────────────────────────────────────────────────────────────────
+// ── Socket ───────────────────────────────────────────────────────────────────
 const socket = io(`http://${window.location.host}`);
 
-// ── Tab switching ────────────────────────────────────────────────────────────
+// ── Tab switching ─────────────────────────────────────────────────────────────
 function switchTab(name) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -39,50 +36,36 @@ function switchTab(name) {
     document.getElementById(`tab-${name}-btn`).classList.add('active');
 }
 
-// ── Socket events ────────────────────────────────────────────────────────────
+// ── Socket event wiring ───────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    socket.on('connect', () => {
-        socket.emit('get_initial_state', {});
-    });
-
-    socket.on('state_update',    (s) => updateUI(s));
-    socket.on('telemetry_update',(d) => updateTelemetry(d));
-    socket.on('ekf_update',      (e) => updateEKF(e));
-    socket.on('map_update',      (m) => renderMap(m));
+    socket.on('connect', () => { socket.emit('get_initial_state', {}); });
+    socket.on('state_update',     (s) => updateUI(s));
+    socket.on('telemetry_update', (d) => updateTelemetry(d));
+    socket.on('ekf_update',       (e) => updateEKF(e));
+    socket.on('map_update',       (m) => renderMap(m));
 
     socket.on('disconnect', () => {
         const err = document.getElementById('error-container');
-        if (err) {
-            err.textContent = 'Connection to the board lost. Please check the connection.';
-            err.style.display = 'block';
-        }
+        if (err) { err.textContent = 'Connection lost.'; err.style.display = 'block'; }
     });
 
-    // Motor button
     powerBtn.addEventListener('click', () => socket.emit('toggle_power', {}));
-
-    // Speed slider — live label update
-    speedSlider.addEventListener('input', (e) => {
-        speedVal.textContent = e.target.value;
-    });
-    // Send to server only on release
-    speedSlider.addEventListener('change', (e) => {
-        socket.emit('set_speed', { speed: parseInt(e.target.value) });
-    });
+    speedSlider.addEventListener('input',  (e) => { speedVal.textContent = e.target.value; });
+    speedSlider.addEventListener('change', (e) => socket.emit('set_speed', { speed: parseInt(e.target.value) }));
 });
 
-// ── UI update helpers ────────────────────────────────────────────────────────
+// ── UI helpers ────────────────────────────────────────────────────────────────
 function updateUI(state) {
     const isOn = state.motors_on;
-    powerBtn.className = isOn ? 'led-on' : 'led-off';
+    powerBtn.className   = isOn ? 'led-on' : 'led-off';
     powerText.textContent = isOn ? 'MOTORS ON' : 'MOTORS OFF';
-    speedSlider.value = state.speed;
+    speedSlider.value    = state.speed;
     speedVal.textContent = state.speed;
 }
 
 function updateTelemetry(data) {
-    encL.textContent = data.enc_l;
-    encR.textContent = data.enc_r;
+    encL.textContent     = data.enc_l;
+    encR.textContent     = data.enc_r;
     imuAccel.textContent = `X: ${data.accel_x.toFixed(2)} | Y: ${data.accel_y.toFixed(2)} | Z: ${data.accel_z.toFixed(2)}`;
     imuGyro.textContent  = `X: ${data.gyro_x.toFixed(2)} | Y: ${data.gyro_y.toFixed(2)} | Z: ${data.gyro_z.toFixed(2)}`;
 }
@@ -90,120 +73,153 @@ function updateTelemetry(data) {
 function updateEKF(e) {
     ekfX.textContent     = e.x_cm.toFixed(2);
     ekfY.textContent     = e.y_cm.toFixed(2);
-    const deg = (e.theta_rad * 180 / Math.PI).toFixed(1);
-    ekfTheta.textContent = `${deg}°`;
-    const dist = Math.sqrt(e.x_cm ** 2 + e.y_cm ** 2).toFixed(2);
-    ekfDist.textContent  = dist;
-    if (socketDebug) socketDebug.textContent = `LAST EKF: ${JSON.stringify(e)}`;
-}
+    ekfTheta.textContent = `${(e.theta_rad * 180 / Math.PI).toFixed(1)}°`;
+    ekfDist.textContent  = Math.sqrt(e.x_cm ** 2 + e.y_cm ** 2).toFixed(2);
 
-// ── Map rendering ────────────────────────────────────────────────────────────
-let _latestPose = null; // updated by ekf_update for live robot marker
-let _trajectory = [];   // historical path points
-
-socket.on('ekf_update', (e) => { 
-    _latestPose = e; 
-    
-    // Append to trajectory if moved > 1cm to keep rendering fast
+    // Update robot position and redraw map immediately (smooth motion)
+    _latestPose = e;
     if (_trajectory.length === 0) {
-        _trajectory.push({x: e.x_cm, y: e.y_cm});
+        _trajectory.push({ x: e.x_cm, y: e.y_cm });
     } else {
         const last = _trajectory[_trajectory.length - 1];
-        const dist = Math.hypot(e.x_cm - last.x, e.y_cm - last.y);
-        if (dist > 1.0) {
-            _trajectory.push({x: e.x_cm, y: e.y_cm});
+        if (Math.hypot(e.x_cm - last.x, e.y_cm - last.y) > 2.0) {
+            _trajectory.push({ x: e.x_cm, y: e.y_cm });
         }
     }
-});
+    if (_lastMapData) _drawMap(_lastMapData);
+}
+
+// ── Map state ─────────────────────────────────────────────────────────────────
+let _latestPose  = null;
+let _trajectory  = [];
+let _lastMapData = null;
+
+// Viewport: always show robot at centre, ±300 cm visible
+const HALF_VIEW = 300;  // cm
+const MAP_PX    = 600;  // canvas px
+const PX_PER_CM = MAP_PX / (HALF_VIEW * 2);
+
+/** World cm → canvas px, centred on robot. */
+function w2p(wx, wy) {
+    const cx = _latestPose ? _latestPose.x_cm : 0;
+    const cy = _latestPose ? _latestPose.y_cm : 0;
+    return {
+        x: MAP_PX / 2 + (wx - cx) * PX_PER_CM,
+        y: MAP_PX / 2 - (wy - cy) * PX_PER_CM   // canvas Y is flipped
+    };
+}
 
 function renderMap(m) {
-    const { cols, rows, data, origin_col, origin_row, coverage, cell_cm } = m;
-    // Debug: log to browser console to confirm packets arriving
-    console.log(`[MAP] coverage=${coverage}% originCell=(${origin_col},${origin_row}) sampleCell[16][16]=${data[16][16]}`);
+    _lastMapData = m;
+    _drawMap(m);
+    coveragePct.textContent = `${m.coverage}%`;
+}
 
-    // Set intrinsic canvas pixel size (16 px per cell looks sharp at any screen width)
-    const cellPx = 16;
-    mapCanvas.width  = cols * cellPx;
-    mapCanvas.height = rows * cellPx;
+function _drawMap(m) {
+    const { cols, rows, data, origin_col, origin_row, cell_cm, coverage } = m;
 
-    // Draw cells
+    mapCanvas.width  = MAP_PX;
+    mapCanvas.height = MAP_PX;
+
+    // 1 ── Background
+    mapCtx.fillStyle = '#E8EEEE';
+    mapCtx.fillRect(0, 0, MAP_PX, MAP_PX);
+
+    // 2 ── Occupancy grid cells (only non-UNKNOWN)
+    const cellPx = cell_cm * PX_PER_CM;
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             const val = data[r][c];
+            if (val === CELL_UNKNOWN) continue;
+            // Convert grid (row, col) → world cm (cell centre)
+            const wx = (c - origin_col) * cell_cm + cell_cm / 2;
+            const wy = (origin_row - r) * cell_cm - cell_cm / 2;
+            const p  = w2p(wx, wy);
             mapCtx.fillStyle = cellColor(val);
-            mapCtx.fillRect(c * cellPx, r * cellPx, cellPx, cellPx);
+            mapCtx.fillRect(p.x - cellPx / 2, p.y - cellPx / 2, cellPx, cellPx);
         }
     }
 
-    // Grid lines (subtle)
-    mapCtx.strokeStyle = 'rgba(0,0,0,0.08)';
-    mapCtx.lineWidth = 0.5;
-    for (let r = 0; r <= rows; r++) {
-        mapCtx.beginPath();
-        mapCtx.moveTo(0, r * cellPx);
-        mapCtx.lineTo(cols * cellPx, r * cellPx);
-        mapCtx.stroke();
+    // 3 ── Grid lines
+    const robotX = _latestPose ? _latestPose.x_cm : 0;
+    const robotY = _latestPose ? _latestPose.y_cm : 0;
+    mapCtx.strokeStyle = 'rgba(0,0,0,0.09)';
+    mapCtx.lineWidth   = 0.5;
+    const x0 = Math.floor((robotX - HALF_VIEW) / cell_cm) * cell_cm;
+    const y0 = Math.floor((robotY - HALF_VIEW) / cell_cm) * cell_cm;
+    for (let wx = x0; wx <= robotX + HALF_VIEW; wx += cell_cm) {
+        const p = w2p(wx, 0);
+        mapCtx.beginPath(); mapCtx.moveTo(p.x, 0); mapCtx.lineTo(p.x, MAP_PX); mapCtx.stroke();
     }
-    for (let c = 0; c <= cols; c++) {
-        mapCtx.beginPath();
-        mapCtx.moveTo(c * cellPx, 0);
-        mapCtx.lineTo(c * cellPx, rows * cellPx);
-        mapCtx.stroke();
+    for (let wy = y0; wy <= robotY + HALF_VIEW; wy += cell_cm) {
+        const p = w2p(0, wy);
+        mapCtx.beginPath(); mapCtx.moveTo(0, p.y); mapCtx.lineTo(MAP_PX, p.y); mapCtx.stroke();
     }
 
-    // Draw trajectory path
+    // 4 ── Origin crosshair (blue dashes)
+    const op = w2p(0, 0);
+    mapCtx.strokeStyle = 'rgba(33,150,243,0.6)';
+    mapCtx.lineWidth   = 1.5;
+    mapCtx.setLineDash([5, 4]);
+    mapCtx.beginPath(); mapCtx.moveTo(op.x - 14, op.y); mapCtx.lineTo(op.x + 14, op.y); mapCtx.stroke();
+    mapCtx.beginPath(); mapCtx.moveTo(op.x, op.y - 14); mapCtx.lineTo(op.x, op.y + 14); mapCtx.stroke();
+    mapCtx.setLineDash([]);
+
+    // 5 ── Trajectory path (red line)
     if (_trajectory.length > 1) {
         mapCtx.beginPath();
-        mapCtx.strokeStyle = 'rgba(233, 30, 99, 0.8)'; // Pink/Red line
-        mapCtx.lineWidth = 2;
-        
-        for (let i = 0; i < _trajectory.length; i++) {
-            const pt = _trajectory[i];
-            const pxX = (origin_col + pt.x / cell_cm) * cellPx;
-            const pxY = (origin_row - pt.y / cell_cm) * cellPx;
-            if (i === 0) mapCtx.moveTo(pxX, pxY);
-            else mapCtx.lineTo(pxX, pxY);
-        }
+        mapCtx.strokeStyle = 'rgba(229, 57, 53, 0.95)';
+        mapCtx.lineWidth   = 2.5;
+        mapCtx.lineJoin    = 'round';
+        _trajectory.forEach((pt, i) => {
+            const p = w2p(pt.x, pt.y);
+            i === 0 ? mapCtx.moveTo(p.x, p.y) : mapCtx.lineTo(p.x, p.y);
+        });
         mapCtx.stroke();
-    }
-
-    // Draw robot position
-    if (_latestPose) {
-        const pxPerCm = cellPx / cell_cm;
-        const robotPxX = (origin_col + _latestPose.x_cm / cell_cm) * cellPx;
-        const robotPxY = (origin_row - _latestPose.y_cm / cell_cm) * cellPx;
-        const theta = _latestPose.theta_rad;
-        const r = cellPx * 0.7;
-
-        mapCtx.save();
-        mapCtx.translate(robotPxX, robotPxY);
-        mapCtx.rotate(-theta);  // canvas Y is flipped
-
-        // Draw filled circle body
+        // Start dot
+        const sp = w2p(_trajectory[0].x, _trajectory[0].y);
         mapCtx.beginPath();
-        mapCtx.arc(0, 0, r * 0.6, 0, Math.PI * 2);
-        mapCtx.fillStyle = '#008184';
+        mapCtx.arc(sp.x, sp.y, 5, 0, Math.PI * 2);
+        mapCtx.fillStyle = 'rgba(229,57,53,0.8)';
         mapCtx.fill();
-
-        // Draw heading arrow
-        mapCtx.beginPath();
-        mapCtx.moveTo(0, 0);
-        mapCtx.lineTo(r, 0);
-        mapCtx.strokeStyle = '#ffffff';
-        mapCtx.lineWidth = 2;
-        mapCtx.stroke();
-
-        mapCtx.restore();
     }
 
-    // Update coverage badge
-    coveragePct.textContent = `${coverage}%`;
+    // 6 ── Robot marker (always at canvas centre)
+    const theta = _latestPose ? _latestPose.theta_rad : 0;
+    const R = 12;
+    mapCtx.save();
+    mapCtx.translate(MAP_PX / 2, MAP_PX / 2);
+    mapCtx.rotate(-theta);
+    // Body
+    mapCtx.beginPath();
+    mapCtx.arc(0, 0, R, 0, Math.PI * 2);
+    mapCtx.fillStyle   = '#00897B';
+    mapCtx.fill();
+    mapCtx.strokeStyle = '#ffffff';
+    mapCtx.lineWidth   = 2;
+    mapCtx.stroke();
+    // Heading arrow
+    mapCtx.beginPath();
+    mapCtx.moveTo(0, 0);
+    mapCtx.lineTo(R + 9, 0);
+    mapCtx.strokeStyle = '#ffffff';
+    mapCtx.lineWidth   = 3;
+    mapCtx.stroke();
+    mapCtx.restore();
+
+    // 7 ── Coordinate label (bottom-left)
+    mapCtx.fillStyle = 'rgba(0,0,0,0.5)';
+    mapCtx.font      = '11px monospace';
+    const lbl = _latestPose
+        ? `X: ${robotX.toFixed(1)} cm   Y: ${robotY.toFixed(1)} cm`
+        : 'Waiting for pose...';
+    mapCtx.fillText(lbl, 8, MAP_PX - 8);
 }
 
 function cellColor(val) {
-    if (val === CELL_WALL)     return '#263238';  // WALL — dark charcoal
-    if (val === CELL_OBSTACLE) return '#b71c1c';  // OBSTACLE — deep red
-    if (val === CELL_CLEANED)  return '#26a69a';  // CLEANED — teal green
-    if (val === CELL_FREE)     return '#b2dfdb';  // FREE — light teal
-    return '#ECF1F1';                             // UNKNOWN — light grey
+    if (val === CELL_WALL)     return '#263238';  // dark charcoal
+    if (val === CELL_OBSTACLE) return '#b71c1c';  // deep red
+    if (val === CELL_CLEANED)  return '#26a69a';  // teal green
+    if (val === CELL_FREE)     return '#b2dfdb';  // light teal
+    return '#E8EEEE';                             // unknown — same as background
 }
