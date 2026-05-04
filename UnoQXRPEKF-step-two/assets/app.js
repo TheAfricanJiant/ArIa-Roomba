@@ -18,10 +18,15 @@ const mapCanvas   = document.getElementById('map-canvas');
 const mapCtx      = mapCanvas.getContext('2d');
 const coveragePct = document.getElementById('coverage-pct');
 const setGoalBtn  = document.getElementById('set-goal-btn');
+const drawZoneBtn = document.getElementById('draw-zone-btn');
+const startNavBtn = document.getElementById('start-nav-btn');
 const clearGoalBtn= document.getElementById('clear-goal-btn');
 
 let _settingGoal = false;
-let _goal = null; // {x, y} in cm
+let _drawingZone = false;
+let _waypoints = []; // array of {x, y}
+let _zoneStart = null; // {x, y}
+let _zone = null; // {x_min, y_min, x_max, y_max}
 
 // ── Cell state constants (match Python OccupancyGrid uint8 values) ──────────
 const CELL_UNKNOWN  = 0;
@@ -58,52 +63,98 @@ document.addEventListener('DOMContentLoaded', () => {
     speedSlider.addEventListener('input',  (e) => { speedVal.textContent = e.target.value; });
     speedSlider.addEventListener('change', (e) => socket.emit('set_speed', { speed: parseInt(e.target.value) }));
 
-    // Goal buttons
+    // Tool buttons
     setGoalBtn.addEventListener('click', () => {
         _settingGoal = true;
+        _drawingZone = false;
         mapCanvas.style.cursor = 'crosshair';
-        setGoalBtn.style.background = '#005e60'; // darker active state
-        setGoalBtn.textContent = 'Click map to set goal...';
+        setGoalBtn.style.background = '#005e60';
+        drawZoneBtn.style.background = '#008184';
+        setGoalBtn.textContent = 'Click to add points...';
+        drawZoneBtn.textContent = '🔲 Draw Zone';
+        _zoneStart = null;
+    });
+
+    drawZoneBtn.addEventListener('click', () => {
+        _drawingZone = true;
+        _settingGoal = false;
+        mapCanvas.style.cursor = 'crosshair';
+        drawZoneBtn.style.background = '#005e60';
+        setGoalBtn.style.background = '#008184';
+        drawZoneBtn.textContent = 'Click 2 corners...';
+        setGoalBtn.textContent = '📍 Add Waypoints';
+        _zoneStart = null;
+    });
+
+    startNavBtn.addEventListener('click', () => {
+        if (_waypoints.length > 0) {
+            socket.emit('set_path', { path: _waypoints });
+        } else if (_zone) {
+            socket.emit('clean_zone', { zone: _zone });
+        }
+        _resetUI();
     });
 
     clearGoalBtn.addEventListener('click', () => {
-        _goal = null;
         socket.emit('clear_goal', {});
+        _waypoints = [];
+        _zone = null;
+        _zoneStart = null;
+        _resetUI();
         clearGoalBtn.style.display = 'none';
-        _settingGoal = false;
-        mapCanvas.style.cursor = 'default';
-        setGoalBtn.style.background = '#008184';
-        setGoalBtn.textContent = '📍 Set Goal';
         if (_lastMapData) _drawMap(_lastMapData);
     });
 
+    function _resetUI() {
+        _settingGoal = false;
+        _drawingZone = false;
+        mapCanvas.style.cursor = 'default';
+        setGoalBtn.style.background = '#008184';
+        drawZoneBtn.style.background = '#008184';
+        setGoalBtn.textContent = '📍 Add Waypoints';
+        drawZoneBtn.textContent = '🔲 Draw Zone';
+        startNavBtn.style.display = 'none';
+        clearGoalBtn.style.display = 'inline-block';
+    }
+
     // Map click handler
     mapCanvas.addEventListener('click', (e) => {
-        if (!_settingGoal) return;
+        if (!_settingGoal && !_drawingZone) return;
         
-        // Calculate canvas coordinates
         const rect = mapCanvas.getBoundingClientRect();
-        // The canvas may be scaled via CSS, so we need to map click px to actual internal canvas size
         const scaleX = mapCanvas.width / rect.width;
         const scaleY = mapCanvas.height / rect.height;
         const clickX = (e.clientX - rect.left) * scaleX;
         const clickY = (e.clientY - rect.top) * scaleY;
 
-        // Convert canvas coordinates to world coordinates (cm)
         const cx = _latestPose ? _latestPose.x_cm : 0;
         const cy = _latestPose ? _latestPose.y_cm : 0;
         const worldX = cx + (clickX - MAP_PX / 2) / PX_PER_CM;
-        const worldY = cy - (clickY - MAP_PX / 2) / PX_PER_CM; // Y is inverted
+        const worldY = cy - (clickY - MAP_PX / 2) / PX_PER_CM;
 
-        _goal = { x: worldX, y: worldY };
-        socket.emit('set_goal', _goal);
-        
-        // Reset UI
-        _settingGoal = false;
-        mapCanvas.style.cursor = 'default';
-        setGoalBtn.style.background = '#008184';
-        setGoalBtn.textContent = '📍 Set Goal';
-        clearGoalBtn.style.display = 'inline-block';
+        if (_settingGoal) {
+            _waypoints.push({ x: worldX, y: worldY });
+            startNavBtn.style.display = 'inline-block';
+            clearGoalBtn.style.display = 'inline-block';
+            _zone = null; // clear any zone
+        } else if (_drawingZone) {
+            if (!_zoneStart) {
+                _zoneStart = { x: worldX, y: worldY };
+                _zone = null;
+            } else {
+                _zone = {
+                    x_min: Math.min(_zoneStart.x, worldX),
+                    y_min: Math.min(_zoneStart.y, worldY),
+                    x_max: Math.max(_zoneStart.x, worldX),
+                    y_max: Math.max(_zoneStart.y, worldY)
+                };
+                _zoneStart = null;
+                _waypoints = []; // clear any waypoints
+                startNavBtn.style.display = 'inline-block';
+                clearGoalBtn.style.display = 'inline-block';
+                _resetUI(); // Auto-exit draw mode when complete
+            }
+        }
         
         if (_lastMapData) _drawMap(_lastMapData);
     });
@@ -117,10 +168,12 @@ function updateUI(state) {
     speedSlider.value    = state.speed;
     speedVal.textContent = state.speed;
     
-    // Auto-clear goal UI if robot stops navigating
-    if (!state.navigating && _goal) {
-        _goal = null;
+    // Auto-clear UI if robot stops navigating
+    if (!state.navigating && (_waypoints.length > 0 || _zone)) {
+        _waypoints = [];
+        _zone = null;
         clearGoalBtn.style.display = 'none';
+        startNavBtn.style.display = 'none';
         if (_lastMapData) _drawMap(_lastMapData);
     }
 }
@@ -276,26 +329,52 @@ function _drawMap(m) {
     mapCtx.stroke();
     mapCtx.restore();
 
-    // 7 ── Goal Marker
-    if (_goal) {
-        const gp = w2p(_goal.x, _goal.y);
-        mapCtx.beginPath();
-        mapCtx.arc(gp.x, gp.y, 8, 0, Math.PI * 2);
-        mapCtx.fillStyle = '#4CAF50';
-        mapCtx.fill();
-        mapCtx.strokeStyle = '#FFFFFF';
+    // 7 ── Zone and Waypoints
+    if (_zone) {
+        const p1 = w2p(_zone.x_min, _zone.y_max);
+        const p2 = w2p(_zone.x_max, _zone.y_min);
+        mapCtx.fillStyle = 'rgba(76, 175, 80, 0.2)';
+        mapCtx.strokeStyle = '#4CAF50';
         mapCtx.lineWidth = 2;
-        mapCtx.stroke();
-        
-        // Draw line from robot to goal
+        mapCtx.fillRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+        mapCtx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+    } else if (_zoneStart) {
+        const p = w2p(_zoneStart.x, _zoneStart.y);
+        mapCtx.beginPath(); mapCtx.arc(p.x, p.y, 4, 0, Math.PI*2);
+        mapCtx.fillStyle = '#4CAF50'; mapCtx.fill();
+    }
+
+    if (_waypoints.length > 0) {
+        // Draw lines
         mapCtx.beginPath();
-        mapCtx.moveTo(MAP_PX / 2, MAP_PX / 2);
-        mapCtx.lineTo(gp.x, gp.y);
-        mapCtx.strokeStyle = 'rgba(76, 175, 80, 0.5)';
+        mapCtx.moveTo(MAP_PX / 2, MAP_PX / 2); // Start from robot
+        _waypoints.forEach(pt => {
+            const p = w2p(pt.x, pt.y);
+            mapCtx.lineTo(p.x, p.y);
+        });
+        mapCtx.strokeStyle = 'rgba(76, 175, 80, 0.7)';
         mapCtx.lineWidth = 2;
         mapCtx.setLineDash([5, 5]);
         mapCtx.stroke();
         mapCtx.setLineDash([]);
+
+        // Draw points
+        _waypoints.forEach((pt, i) => {
+            const p = w2p(pt.x, pt.y);
+            mapCtx.beginPath();
+            mapCtx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+            mapCtx.fillStyle = '#4CAF50';
+            mapCtx.fill();
+            mapCtx.strokeStyle = '#FFFFFF';
+            mapCtx.lineWidth = 2;
+            mapCtx.stroke();
+            // Number
+            mapCtx.fillStyle = '#FFFFFF';
+            mapCtx.font = '10px sans-serif';
+            mapCtx.textAlign = 'center';
+            mapCtx.textBaseline = 'middle';
+            mapCtx.fillText((i+1).toString(), p.x, p.y);
+        });
     }
 
     // 8 ── Coordinate label (bottom-left)

@@ -84,9 +84,13 @@ SPDX-License-Identifier: MPL-2.0
                 <p class="instruction-text" style="margin: 8px 16px; text-align: center;">
                     🟩 Cleaned &nbsp;|&nbsp; ⬛ Wall &nbsp;|&nbsp; ⬜ Unknown &nbsp;|&nbsp; 🔴 Trajectory &nbsp;|&nbsp; 🔵 Robot &nbsp;|&nbsp; 📍 Goal
                 </p>
+                <div style="text-align: center; margin-bottom: 8px;">
+                    <button id="set-goal-btn" class="tab-btn" style="background: #008184; color: white;">📍 Add Waypoints</button>
+                    <button id="draw-zone-btn" class="tab-btn" style="background: #008184; color: white;">🔲 Draw Zone</button>
+                </div>
                 <div style="text-align: center; margin-bottom: 16px;">
-                    <button id="set-goal-btn" class="tab-btn" style="background: #008184; color: white;">📍 Set Goal</button>
-                    <button id="clear-goal-btn" class="tab-btn" style="display: none; background: #e53935; color: white;">❌ Clear Goal</button>
+                    <button id="start-nav-btn" class="tab-btn" style="display: none; background: #4CAF50; color: white;">▶️ Start</button>
+                    <button id="clear-goal-btn" class="tab-btn" style="display: none; background: #e53935; color: white;">❌ Clear</button>
                 </div>
             </div>
         </div>

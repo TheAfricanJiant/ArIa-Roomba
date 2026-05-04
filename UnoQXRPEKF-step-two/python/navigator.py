@@ -5,18 +5,33 @@ log = logging.getLogger(__name__)
 
 class Navigator:
     def __init__(self):
-        self.goal = None  # (x_cm, y_cm)
+        self.goal = None  # Current target (x_cm, y_cm)
+        self.waypoints = [] # Queue of future targets
         self.base_speed = 160
         self.k_p = 100.0  # proportional gain for heading error
         self.arrival_dist_cm = 15.0
 
     def set_goal(self, x: float, y: float, speed: int):
-        self.goal = (x, y)
+        """Convenience method for a single waypoint"""
+        self.set_path([(x, y)], speed)
+
+    def set_path(self, points: list, speed: int):
+        """Sets a sequence of waypoints"""
+        self.waypoints = points
         self.base_speed = speed
-        log.info(f"Navigator goal set to: ({x:.1f}, {y:.1f})")
+        self._pop_next_goal()
+        log.info(f"Navigator path set with {len(self.waypoints)+1 if self.goal else 0} points.")
+
+    def _pop_next_goal(self):
+        if self.waypoints:
+            self.goal = self.waypoints.pop(0)
+            log.info(f"Navigator heading to: {self.goal}")
+        else:
+            self.goal = None
 
     def clear_goal(self):
         self.goal = None
+        self.waypoints = []
 
     def step(self, current_x: float, current_y: float, current_theta: float) -> tuple[int, int, bool]:
         """
@@ -34,9 +49,14 @@ class Navigator:
         distance = math.hypot(dx, dy)
 
         if distance < self.arrival_dist_cm:
-            log.info("Navigator arrived at goal.")
-            self.clear_goal()
-            return 0, 0, True
+            if self.waypoints:
+                log.info("Navigator reached intermediate waypoint.")
+                self._pop_next_goal()
+                # Continue driving
+            else:
+                log.info("Navigator arrived at final destination.")
+                self.clear_goal()
+                return 0, 0, True
 
         # Calculate desired heading
         desired_theta = math.atan2(dy, dx)

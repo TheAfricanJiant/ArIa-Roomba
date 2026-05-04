@@ -73,6 +73,56 @@ def set_goal(client, data):
     log.info(f"Goal set to: {x}, {y}")
 
 
+def set_path(client, data):
+    global state
+    points = data.get("path", [])
+    if not points:
+        return
+    path = [(p["x"], p["y"]) for p in points]
+    nav.set_path(path, state["speed"])
+    state["navigating"] = True
+    state["motors_on"] = True
+    ui.send_message('state_update', get_state())
+    log.info(f"Path set with {len(path)} waypoints")
+
+
+def clean_zone(client, data):
+    global state
+    zone = data.get("zone")
+    if not zone:
+        return
+    x_min, x_max = min(zone["x_min"], zone["x_max"]), max(zone["x_min"], zone["x_max"])
+    y_min, y_max = min(zone["y_min"], zone["y_max"]), max(zone["y_min"], zone["y_max"])
+    
+    # Generate lawnmower pattern
+    lane_width = 30.0 # cm
+    path = []
+    
+    # Sweep horizontally (X), shift vertically (Y)
+    current_y = y_min + lane_width / 2.0
+    going_right = True
+    
+    while current_y <= y_max:
+        if going_right:
+            path.append((x_min, current_y))
+            path.append((x_max, current_y))
+        else:
+            path.append((x_max, current_y))
+            path.append((x_min, current_y))
+        
+        current_y += lane_width
+        going_right = not going_right
+        
+    if not path:
+        return
+        
+    nav.set_path(path, state["speed"])
+    state["navigating"] = True
+    state["motors_on"] = True
+    ui.send_message('state_update', get_state())
+    log.info(f"Zone cleaning started with {len(path)} waypoints")
+
+
 def clear_goal(client, data):
     global state
     nav.clear_goal()
@@ -109,6 +159,8 @@ ui.on_message('toggle_power', toggle_power)
 ui.on_message('set_speed', set_speed)
 ui.on_message('get_initial_state', on_get_initial_state)
 ui.on_message('set_goal', set_goal)
+ui.on_message('set_path', set_path)
+ui.on_message('clean_zone', clean_zone)
 ui.on_message('clear_goal', clear_goal)
 
 # ── Start background threads ───────────────────────────────────────────────────
