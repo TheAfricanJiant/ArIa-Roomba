@@ -3,7 +3,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-HOST = 'localhost'
+HOST = '192.168.1.205'
 PORT = 5000
 
 sock = None
