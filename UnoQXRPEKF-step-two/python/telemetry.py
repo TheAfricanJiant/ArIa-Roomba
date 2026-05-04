@@ -8,8 +8,8 @@ log = logging.getLogger(__name__)
 # ── Simple dead-reckoning fallback (no dependencies) ─────────────────────────
 class SimpleDeadReckoning:
     """Minimal encoder-only pose tracker. No filterpy required."""
-    CM_PER_TICK  = (math.pi * 6.5) / 360  # wheel circumference / ticks
-    WHEEL_BASE   = 25.0                    # cm between wheels
+    CM_PER_TICK  = (math.pi * 6.0) / 360   # XRP wheel diameter = 6.0 cm
+    WHEEL_BASE   = 15.5                    # XRP track width = 15.5 cm
 
     def __init__(self):
         self.x = 0.0

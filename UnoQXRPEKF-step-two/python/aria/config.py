@@ -6,8 +6,8 @@ Edit these values to match your actual hardware before running.
 import math
 
 # ── Robot geometry ──────────────────────────────────────────────────────────
-WHEEL_BASE_CM       = 25.0      # Distance between left and right wheels (cm)
-WHEEL_DIAMETER_CM   = 6.5       # Wheel diameter (cm)
+WHEEL_BASE_CM       = 15.5      # Track width of XRP robot (cm)
+WHEEL_DIAMETER_CM   = 6.0       # Standard XRP wheel diameter (cm)
 WHEEL_CIRCUMFERENCE = math.pi * WHEEL_DIAMETER_CM
 TICKS_PER_REV       = 360       # Encoder pulses per full wheel revolution
 CM_PER_TICK         = WHEEL_CIRCUMFERENCE / TICKS_PER_REV
