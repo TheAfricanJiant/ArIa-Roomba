@@ -18,14 +18,15 @@ const mapCanvas    = document.getElementById('map-canvas');
 const mapCtx       = mapCanvas.getContext('2d');
 const coveragePct  = document.getElementById('coverage-pct');
 
-const socketDebug  = document.getElementById('socket-debug');
+const socketDebug  = document.getElementById('socket-debug'); // may be null now — that's fine
 
-// ── Grid constants ──────────────────────────────────────────────────────────
-// Cell values from OccupancyGrid
-const CELL_UNKNOWN = 127;
-const CELL_CLEANED = 0;
-const CELL_WALL    = 255;
-const CELL_FREE    = 64;
+// ── Grid constants (MUST match Python OccupancyGrid uint8 values) ───────────
+// occupancy_grid.py:  UNKNOWN=0, FREE=1, CLEANED=2, WALL=3, OBSTACLE=4
+const CELL_UNKNOWN  = 0;
+const CELL_FREE     = 1;
+const CELL_CLEANED  = 2;
+const CELL_WALL     = 3;
+const CELL_OBSTACLE = 4;
 
 // ── Socket ──────────────────────────────────────────────────────────────────
 const socket = io(`http://${window.location.host}`);
@@ -93,10 +94,7 @@ function updateEKF(e) {
     ekfTheta.textContent = `${deg}°`;
     const dist = Math.sqrt(e.x_cm ** 2 + e.y_cm ** 2).toFixed(2);
     ekfDist.textContent  = dist;
-    
-    if (socketDebug) {
-        socketDebug.textContent = `LAST EKF: ${JSON.stringify(e)}`;
-    }
+    if (socketDebug) socketDebug.textContent = `LAST EKF: ${JSON.stringify(e)}`;
 }
 
 // ── Map rendering ────────────────────────────────────────────────────────────
@@ -119,14 +117,11 @@ socket.on('ekf_update', (e) => {
 });
 
 function renderMap(m) {
-    if (socketDebug && Math.random() < 0.1) {
-        // Only print map occasionally to avoid flashing too fast
-        socketDebug.textContent = `LAST MAP: cols=${m.cols}, coverage=${m.coverage}%`;
-    }
+    if (socketDebug && Math.random() < 0.1) socketDebug.textContent = `MAP: cols=${m.cols}, cov=${m.coverage}%`;
     const { cols, rows, data, origin_col, origin_row, coverage, cell_cm } = m;
 
-    // Resize canvas to match grid
-    const cellPx = Math.floor(Math.min(mapCanvas.width, mapCanvas.height) / Math.max(cols, rows));
+    // Set intrinsic canvas pixel size (16 px per cell looks sharp at any screen width)
+    const cellPx = 16;
     mapCanvas.width  = cols * cellPx;
     mapCanvas.height = rows * cellPx;
 
@@ -205,8 +200,9 @@ function renderMap(m) {
 }
 
 function cellColor(val) {
-    if (val >= 200) return '#2C353A';          // WALL — dark
-    if (val <= 10)  return '#b2dfdb';          // CLEANED — light teal
-    if (val < 100)  return '#dce8e8';          // FREE — light grey-teal
-    return '#ECF1F1';                          // UNKNOWN — background
+    if (val === CELL_WALL)     return '#263238';  // WALL — dark charcoal
+    if (val === CELL_OBSTACLE) return '#b71c1c';  // OBSTACLE — deep red
+    if (val === CELL_CLEANED)  return '#26a69a';  // CLEANED — teal green
+    if (val === CELL_FREE)     return '#b2dfdb';  // FREE — light teal
+    return '#ECF1F1';                             // UNKNOWN — light grey
 }

@@ -73,16 +73,16 @@ SPDX-License-Identifier: MPL-2.0
 
         <!-- ══════════════ TAB: MAP ══════════════ -->
         <div class="tab-panel hidden" id="tab-map">
-            <div class="container">
-                <div class="map-header">
+            <div class="container" style="max-width: none; padding: 0;">
+                <div class="map-header" style="padding: 8px 16px;">
                     <span class="arduino-text section-title">Occupancy Grid</span>
                     <span class="coverage-badge">Coverage: <strong id="coverage-pct">0%</strong></span>
                 </div>
-                <div class="canvas-wrapper">
-                    <canvas id="map-canvas" width="500" height="500"></canvas>
+                <div class="canvas-wrapper" style="width: 100%; background: #ECF1F1;">
+                    <canvas id="map-canvas" style="display: block; width: 100%; image-rendering: pixelated;"></canvas>
                 </div>
-                <p class="instruction-text" style="margin-top: 12px; text-align: center;">
-                    🟩 Cleaned &nbsp;|&nbsp; ⬛ Wall &nbsp;|&nbsp; ⬜ Unknown &nbsp;|&nbsp; 🔵 Robot
+                <p class="instruction-text" style="margin: 8px 16px; text-align: center;">
+                    🟩 Cleaned &nbsp;|&nbsp; ⬛ Wall &nbsp;|&nbsp; ⬜ Unknown &nbsp;|&nbsp; 🔴 Trajectory &nbsp;|&nbsp; 🔵 Robot
                 </p>
             </div>
         </div>
@@ -110,16 +110,6 @@ SPDX-License-Identifier: MPL-2.0
                             <span class="telem-value ekf-value" id="ekf-dist">0.00</span>
                         </div>
                     </div>
-                </div>
-                <!-- ON SCREEN DEBUG -->
-                <div class="telemetry-box" style="margin-top: 10px; background: #ffebee;">
-                    <h3 class="arduino-text section-title" style="color: #c62828;">Socket Debug</h3>
-                    <p class="instruction-text" id="socket-debug" style="font-family: monospace; font-size: 10px; word-wrap: break-word;">Waiting for packets...</p>
-                </div>
-                <div class="telemetry-box" style="margin-top: 20px;">
-                    <h3 class="arduino-text section-title">State Confidence</h3>
-                    <p class="instruction-text">The EKF fuses encoder dead-reckoning with IMU gyro to reduce heading drift. The longer the robot runs, the more accumulated position uncertainty grows — until a wall snap resets it.</p>
-                </div>
             </div>
         </div>
 
