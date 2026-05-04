@@ -37,18 +37,33 @@ def send(data: str):
             sock = None  # Mark as disconnected
 
 
+_buffer = ""
+
 def readline() -> str:
-    """Read a line from the bridge. Returns empty string on timeout or error."""
-    global sock
-    if sock:
-        try:
-            data = sock.recv(256).decode('utf-8', errors='ignore')
-            return data.strip()
-        except socket.timeout:
-            return ''
-        except Exception as e:
-            log.error(f"Read failed: {e}")
+    """Read a line from the bridge. Returns empty string if no full line is available."""
+    global sock, _buffer
+    if not sock:
+        return ''
+        
+    try:
+        # Try to read more data if available
+        data = sock.recv(1024).decode('utf-8', errors='ignore')
+        if not data:
+            log.error("Socket connection closed by remote host")
             sock = None
+            return ''
+        _buffer += data
+    except socket.timeout:
+        pass
+    except Exception as e:
+        log.error(f"Read failed: {e}")
+        sock = None
+        return ''
+        
+    if '\n' in _buffer:
+        line, _buffer = _buffer.split('\n', 1)
+        return line.strip()
+    
     return ''
 
 

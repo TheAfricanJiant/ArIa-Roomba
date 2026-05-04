@@ -41,8 +41,12 @@ def telemetry_loop(ui):
     """Continuously read telemetry from bridge and push to UI."""
     while True:
         if serial_bridge.is_connected():
-            raw = serial_bridge.readline()
-            for line in raw.splitlines():
+            # Drain the buffer completely
+            while True:
+                line = serial_bridge.readline()
+                if not line:
+                    break  # No more full lines available
+                
                 if _parse_line(line):
                     ui.send_message('telemetry_update', telemetry)
-        time.sleep(0.1)
+        time.sleep(0.05)
