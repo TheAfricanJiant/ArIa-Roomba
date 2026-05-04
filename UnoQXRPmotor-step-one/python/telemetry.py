@@ -20,7 +20,7 @@ def _parse_line(line: str) -> bool:
     if not line.startswith('T,'):
         return False
     parts = line.split(',')
-    if len(parts) < 10:
+    if len(parts) < 9:
         return False
     try:
         telemetry["enc_l"]   = int(parts[1])
@@ -45,8 +45,7 @@ def telemetry_loop(ui):
             while True:
                 line = serial_bridge.readline()
                 if not line:
-                    break  # No more full lines available
-                
+                    break
                 if _parse_line(line):
                     ui.send_message('telemetry_update', telemetry)
         time.sleep(0.05)
