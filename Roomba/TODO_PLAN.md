@@ -112,6 +112,7 @@
   - [x] Loops until `nearest_uncleaned()` returns None → DOCK
 - [x] `on_plan_path_debug` — sends A* path as JSON to WebUI for visualisation
 - [x] `plan_path` / `astar_cells` exported from `aria` package
+- [x] Test: robot covers defined area systematically (lawnmower pattern)
 - [ ] Test: robot docks reliably from 3 different starting positions
 - [ ] End-to-end test: full autonomous clean → auto-dock
 
