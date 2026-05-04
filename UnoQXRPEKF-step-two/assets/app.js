@@ -117,8 +117,9 @@ socket.on('ekf_update', (e) => {
 });
 
 function renderMap(m) {
-    if (socketDebug && Math.random() < 0.1) socketDebug.textContent = `MAP: cols=${m.cols}, cov=${m.coverage}%`;
     const { cols, rows, data, origin_col, origin_row, coverage, cell_cm } = m;
+    // Debug: log to browser console to confirm packets arriving
+    console.log(`[MAP] coverage=${coverage}% originCell=(${origin_col},${origin_row}) sampleCell[16][16]=${data[16][16]}`);
 
     // Set intrinsic canvas pixel size (16 px per cell looks sharp at any screen width)
     const cellPx = 16;
