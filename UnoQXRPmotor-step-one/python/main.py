@@ -2,9 +2,13 @@ from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
 import threading
 import time
-import random
 import serial
 import os
+import logging
+
+# Logger must be set up BEFORE init_serial() is called
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 # Global state
 state = {
@@ -20,6 +24,7 @@ telemetry = {
 
 # --- SERIAL SETUP ---
 ser = None
+
 def init_serial():
     global ser
     ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1']
@@ -27,11 +32,11 @@ def init_serial():
         if os.path.exists(p):
             try:
                 ser = serial.Serial(p, 115200, timeout=0.1)
-                log.info(f"Connected to XRP on {p}")
+                log.info(f"Connected to Arduino on {p}")
                 return
             except Exception as e:
                 log.error(f"Failed to open {p}: {e}")
-    log.warning("No XRP serial port found. Falling back to dummy data.")
+    log.warning("No serial port found. Falling back to dummy data.")
 
 init_serial()
 
@@ -51,7 +56,7 @@ def toggle_power(client, data):
     state["motors_on"] = not state["motors_on"]
     ui.send_message('state_update', get_state())
     log.info(f"Motors toggled: {state['motors_on']}")
-    
+
     if state["motors_on"]:
         send_motor_cmd(state["speed"], state["speed"])
     else:
@@ -62,7 +67,7 @@ def set_speed(client, data):
     state["speed"] = data.get("speed", 160)
     ui.send_message('state_update', get_state())
     log.info(f"Speed set to: {state['speed']}")
-    
+
     if state["motors_on"]:
         send_motor_cmd(state["speed"], state["speed"])
 
@@ -78,17 +83,16 @@ def telemetry_loop():
                     # Format: T,encL,encR,aX,aY,aZ,gX,gY,gZ
                     parts = line.split(',')
                     if len(parts) >= 10:
-                        telemetry["enc_l"] = int(parts[1])
-                        telemetry["enc_r"] = int(parts[2])
+                        telemetry["enc_l"]   = int(parts[1])
+                        telemetry["enc_r"]   = int(parts[2])
                         telemetry["accel_x"] = float(parts[3])
                         telemetry["accel_y"] = float(parts[4])
                         telemetry["accel_z"] = float(parts[5])
-                        telemetry["gyro_x"] = float(parts[6])
-                        telemetry["gyro_y"] = float(parts[7])
-                        telemetry["gyro_z"] = float(parts[8])
-                        
+                        telemetry["gyro_x"]  = float(parts[6])
+                        telemetry["gyro_y"]  = float(parts[7])
+                        telemetry["gyro_z"]  = float(parts[8])
                         ui.send_message('telemetry_update', telemetry)
-            except Exception as e:
+            except Exception:
                 pass
         time.sleep(0.1)
 
@@ -97,7 +101,7 @@ ui.on_message('toggle_power', toggle_power)
 ui.on_message('set_speed', set_speed)
 ui.on_message('get_initial_state', on_get_initial_state)
 
-# Start telemetry reader
+# Start telemetry reader thread
 threading.Thread(target=telemetry_loop, daemon=True).start()
 
 App.run()
