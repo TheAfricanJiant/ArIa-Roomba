@@ -67,19 +67,19 @@ class ARIALocalization:
     def pose(self) -> tuple[float, float, float]:
         """Return (x_cm, y_cm, theta_rad)."""
         x = self._ekf.x
-        return float(x[0]), float(x[1]), float(x[2])
+        return float(x[0, 0]), float(x[1, 0]), float(x[2, 0])
 
     @property
     def x_cm(self) -> float:
-        return float(self._ekf.x[0])
+        return float(self._ekf.x[0, 0])
 
     @property
     def y_cm(self) -> float:
-        return float(self._ekf.x[1])
+        return float(self._ekf.x[1, 0])
 
     @property
     def theta_rad(self) -> float:
-        return float(self._ekf.x[2])
+        return float(self._ekf.x[2, 0])
 
     def predict(self, enc_left_delta: int, enc_right_delta: int) -> None:
         """
@@ -109,10 +109,10 @@ class ARIALocalization:
         ])
 
         # Apply motion
-        self._ekf.x[0] += d_c * cos_t
-        self._ekf.x[1] += d_c * sin_t
-        self._ekf.x[2] += d_theta
-        self._ekf.x[2] = self._wrap_angle(self._ekf.x[2])
+        self._ekf.x[0, 0] += d_c * cos_t
+        self._ekf.x[1, 0] += d_c * sin_t
+        self._ekf.x[2, 0] += d_theta
+        self._ekf.x[2, 0] = self._wrap_angle(self._ekf.x[2, 0])
 
         # Propagate covariance
         self._ekf.P = F @ self._ekf.P @ F.T + self._ekf.Q
@@ -133,7 +133,7 @@ class ARIALocalization:
         # (predicted change is already in x[2] after predict())
         # We observe delta_theta directly from the gyro
         self._ekf.H = np.array([[0.0, 0.0, 1.0]])
-        z_pred = np.array([[self._ekf.x[2]]])  # predicted θ
+        z_pred = np.array([[self._ekf.x[2, 0]]])  # predicted θ
         # Map gyro to an absolute angle for the update
         # Simple: use gyro-integrated angle as observation of theta
         z_obs = np.array([[self._wrap_angle(z_pred[0, 0] + gyro_z * dt)]])
@@ -145,7 +145,7 @@ class ARIALocalization:
         # Update state
         innovation = z_obs - self._ekf.H @ self._ekf.x
         self._ekf.x += K @ innovation
-        self._ekf.x[2] = self._wrap_angle(self._ekf.x[2])
+        self._ekf.x[2, 0] = self._wrap_angle(self._ekf.x[2, 0])
 
         # Update covariance (Joseph form for numerical stability)
         I_KH = np.eye(3) - K @ self._ekf.H
@@ -161,10 +161,10 @@ class ARIALocalization:
             wall_coord_cm: The known coordinate of the wall (cm, robot frame)
         """
         if side in ('left', 'right'):
-            self._ekf.x[0] = wall_coord_cm
+            self._ekf.x[0, 0] = wall_coord_cm
             self._ekf.P[0, 0] = 1.0  # high confidence in x after snap
         elif side in ('front', 'rear'):
-            self._ekf.x[1] = wall_coord_cm
+            self._ekf.x[1, 0] = wall_coord_cm
             self._ekf.P[1, 1] = 1.0
 
     def reset(self, x: float = 0.0, y: float = 0.0,
