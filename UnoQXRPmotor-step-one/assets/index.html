@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA Roomba Dashboard</title>
+    <link rel="icon" type="image/png" href="./img/favicon.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <header>
+            <h1>ARIA <span>DASHBOARD</span></h1>
+            <p>XRP Motor & Sensor Telemetry</p>
+        </header>
+
+        <main class="grid-container">
+            <!-- Motor Controls -->
+            <section class="glass-card controls-card">
+                <h2>Motor Control</h2>
+                
+                <div class="power-section">
+                    <button id="motor-power-btn" class="power-off">
+                        <span id="power-text">MOTORS OFF</span>
+                    </button>
+                </div>
+
+                <div class="speed-section">
+                    <label for="speed-slider">Target Speed: <span id="speed-val">160</span></label>
+                    <input type="range" id="speed-slider" min="0" max="255" value="160">
+                </div>
+            </section>
+
+            <!-- Sensor Telemetry -->
+            <section class="glass-card telemetry-card">
+                <h2>Live Telemetry</h2>
+                
+                <div class="sensor-grid">
+                    <div class="sensor-item">
+                        <span class="label">Encoder L</span>
+                        <span class="value" id="enc-l">0</span>
+                    </div>
+                    <div class="sensor-item">
+                        <span class="label">Encoder R</span>
+                        <span class="value" id="enc-r">0</span>
+                    </div>
+                    <div class="sensor-item full-width">
+                        <span class="label">IMU Accel (m/s²)</span>
+                        <span class="value" id="imu-accel">X: 0.00 | Y: 0.00 | Z: 0.00</span>
+                    </div>
+                    <div class="sensor-item full-width">
+                        <span class="label">IMU Gyro (rad/s)</span>
+                        <span class="value" id="imu-gyro">X: 0.00 | Y: 0.00 | Z: 0.00</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="libs/socket.io.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

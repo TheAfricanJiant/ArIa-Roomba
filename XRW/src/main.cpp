@@ -51,43 +51,7 @@ void stopMotors() {
   analogWrite(MOTOR_R_EN, 0);
 }
 
-void printStatus(unsigned long elapsedMs, long deltaL, long deltaR) {
-  sensors_event_t accel, gyro, temp;
-  imu.getEvent(&accel, &gyro, &temp);
-  printSerialf("  %6lu ms │ L=%5ld R=%5ld │ A=%6.2f,%6.2f,%6.2f │ G=%6.2f,%6.2f,%6.2f │ T=%5.1f\n",
-               elapsedMs,
-               deltaL,
-               deltaR,
-               accel.acceleration.x,
-               accel.acceleration.y,
-               accel.acceleration.z,
-               gyro.gyro.x,
-               gyro.gyro.y,
-               gyro.gyro.z,
-               temp.temperature);
-}
-
-void runStep(const char* label, int l, int r) {
-  long startL = encL;
-  long startR = encR;
-  unsigned long t0 = millis();
-  unsigned long nextPrint = t0;
-
-  printSerialf("\n[%s] L=%d R=%d\n", label, l, r);
-  setMotors(l, r);
-
-  while (millis() - t0 < STEP_DURATION_MS) {
-    unsigned long now = millis();
-    if (now >= nextPrint) {
-      printStatus(now - t0, encL - startL, encR - startR);
-      nextPrint += STATUS_INTERVAL_MS;
-    }
-  }
-
-  stopMotors();
-  printSerialf("DONE L=%ld R=%ld\n", encL - startL, encR - startR);
-  delay(300);
-}
+unsigned long lastTelemetryTime = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -138,11 +102,32 @@ void setup() {
 }
 
 void loop() {
-  runStep("FORWARD", TEST_SPEED, TEST_SPEED * 3 / 4);
-  runStep("BACK", -TEST_SPEED, -TEST_SPEED * 3 / 4);
-  runStep("SPIN L", -TEST_SPEED, TEST_SPEED);
-  runStep("SPIN R", TEST_SPEED, -TEST_SPEED);
+  // 1. Check for incoming commands from Uno Q via USB
+  if (Serial.available() > 0) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd.startsWith("M,")) {
+      int comma1 = cmd.indexOf(',');
+      int comma2 = cmd.indexOf(',', comma1 + 1);
+      if (comma1 != -1 && comma2 != -1) {
+        int left = cmd.substring(comma1 + 1, comma2).toInt();
+        int right = cmd.substring(comma2 + 1).toInt();
+        setMotors(left, right);
+      }
+    }
+  }
 
-  Serial.println("=== CYCLE COMPLETE ===\n");
-  delay(2000);
+  // 2. Publish telemetry every 100ms
+  unsigned long now = millis();
+  if (now - lastTelemetryTime >= 100) {
+    lastTelemetryTime = now;
+    
+    sensors_event_t accel, gyro, temp;
+    imu.getEvent(&accel, &gyro, &temp);
+    
+    printSerialf("T,%ld,%ld,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                 encL, encR,
+                 accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
+                 gyro.gyro.x, gyro.gyro.y, gyro.gyro.z);
+  }
 }

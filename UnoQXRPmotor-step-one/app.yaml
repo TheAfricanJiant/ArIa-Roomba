@@ -1,0 +1,6 @@
+name: UnoQXRPmotor-step-one
+icon: 🏎️
+description: Test motor control from App Lab UI
+
+bricks:
+  - arduino:web_ui
