@@ -89,7 +89,7 @@ _sgrid = SimpleGrid()
 
 try:
     from aria import ARIALocalization, OccupancyGrid
-    from aria.config import CELL_SIZE_CM, GRID_COLS, GRID_ROWS
+    from aria.config import CELL_SIZE_CM, GRID_COLS, GRID_ROWS, GRID_ORIGIN_ROW, GRID_ORIGIN_COL
     ekf  = ARIALocalization(start_x=0.0, start_y=0.0, start_theta=0.0)
     grid = OccupancyGrid()
     _EKF_AVAILABLE = True
@@ -128,8 +128,8 @@ def get_grid_snapshot() -> dict:
         return {
             "cols": GRID_COLS, "rows": GRID_ROWS,
             "cell_cm": CELL_SIZE_CM,
-            "origin_col": grid._origin_col,
-            "origin_row": grid._origin_row,
+            "origin_col": GRID_ORIGIN_COL,
+            "origin_row": GRID_ORIGIN_ROW,
             "data": data,
             "coverage": round(grid.coverage_percent(), 1),
         }
