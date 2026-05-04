@@ -93,6 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.emit('clean_zone', { zone: _zone });
         }
         _resetUI();
+        startNavBtn.style.display = 'none';
     });
 
     clearGoalBtn.addEventListener('click', () => {
@@ -102,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
         _zoneStart = null;
         _resetUI();
         clearGoalBtn.style.display = 'none';
+        startNavBtn.style.display = 'none';
         if (_lastMapData) _drawMap(_lastMapData);
     });
 
@@ -113,8 +115,6 @@ document.addEventListener('DOMContentLoaded', () => {
         drawZoneBtn.style.background = '#008184';
         setGoalBtn.textContent = '📍 Add Waypoints';
         drawZoneBtn.textContent = '🔲 Draw Zone';
-        startNavBtn.style.display = 'none';
-        clearGoalBtn.style.display = 'inline-block';
     }
 
     // Map click handler
