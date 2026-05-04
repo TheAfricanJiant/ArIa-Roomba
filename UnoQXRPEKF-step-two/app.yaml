@@ -1,0 +1,6 @@
+name: UnoQXRPEKF-step-two
+icon: 🧭
+description: EKF Localization Integration
+
+bricks:
+  - arduino:web_ui
