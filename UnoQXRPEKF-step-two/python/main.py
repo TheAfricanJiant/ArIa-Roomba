@@ -8,6 +8,8 @@ import motor
 import telemetry
 import navigator
 import time
+import json
+import os
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +62,38 @@ def set_speed(client, data):
 
 def on_get_initial_state(client, data):
     ui.send_message('state_update', get_state(), client)
+    ui.send_message('routines_list', _load_routines(), client)
+
+
+# ── Routines Management ────────────────────────────────────────────────────────
+ROUTINES_FILE = "routines.json"
+
+def _load_routines():
+    if not os.path.exists(ROUTINES_FILE):
+        return []
+    try:
+        with open(ROUTINES_FILE, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        log.error(f"Failed to load routines: {e}")
+        return []
+
+def save_routine(client, data):
+    routine_name = data.get("name")
+    if not routine_name: return
+    routines = _load_routines()
+    routines.append({
+        "name": routine_name,
+        "type": data.get("type"),
+        "data": data.get("data")
+    })
+    try:
+        with open(ROUTINES_FILE, "w") as f:
+            json.dump(routines, f, indent=2)
+        log.info(f"Routine '{routine_name}' saved.")
+        ui.send_message('routines_list', routines)
+    except Exception as e:
+        log.error(f"Failed to save routine: {e}")
 
 
 def set_goal(client, data):
@@ -95,9 +129,15 @@ def clean_zone(client, data):
     x_min, x_max = min(zone["x_min"], zone["x_max"]), max(zone["x_min"], zone["x_max"])
     y_min, y_max = min(zone["y_min"], zone["y_max"]), max(zone["y_min"], zone["y_max"])
     
-    # Generate lawnmower pattern
-    lane_width = 30.0 # cm
-    path = []
+    # 1. Perimeter Sweep
+    path.append((x_min, y_min))
+    path.append((x_max, y_min))
+    path.append((x_max, y_max))
+    path.append((x_min, y_max))
+    path.append((x_min, y_min))
+    
+    # 2. Dense Lawnmower pattern
+    lane_width = 20.0 # cm, ensuring 33% overlap for a 30cm wide robot
     
     # Sweep horizontally (X), shift vertically (Y)
     current_y = y_min + lane_width / 2.0
@@ -177,6 +217,7 @@ ui.on_message('set_goal', set_goal)
 ui.on_message('set_path', set_path)
 ui.on_message('clean_zone', clean_zone)
 ui.on_message('clear_goal', clear_goal)
+ui.on_message('save_routine', save_routine)
 
 # ── Start background threads ───────────────────────────────────────────────────
 threading.Thread(target=telemetry.telemetry_loop, args=(ui,), daemon=True).start()

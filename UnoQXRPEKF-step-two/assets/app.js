@@ -20,13 +20,16 @@ const coveragePct = document.getElementById('coverage-pct');
 const setGoalBtn  = document.getElementById('set-goal-btn');
 const drawZoneBtn = document.getElementById('draw-zone-btn');
 const startNavBtn = document.getElementById('start-nav-btn');
+const saveRoutineBtn = document.getElementById('save-routine-btn');
 const clearGoalBtn= document.getElementById('clear-goal-btn');
+const routinesSelect = document.getElementById('routines-select');
 
 let _settingGoal = false;
 let _drawingZone = false;
 let _waypoints = []; // array of {x, y}
 let _zoneStart = null; // {x, y}
 let _zone = null; // {x_min, y_min, x_max, y_max}
+let _routinesData = [];
 
 // ── Cell state constants (match Python OccupancyGrid uint8 values) ──────────
 const CELL_UNKNOWN  = 0;
@@ -57,6 +60,17 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('path_update', (path) => {
         _waypoints = path;
         if (_lastMapData) _drawMap(_lastMapData);
+    });
+    
+    socket.on('routines_list', (list) => {
+        _routinesData = list;
+        routinesSelect.innerHTML = '<option value="">-- Load Saved Routine --</option>';
+        list.forEach((r, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = `${r.name} [${r.type === 'zone' ? 'Zone' : 'Path'}]`;
+            routinesSelect.appendChild(opt);
+        });
     });
 
     socket.on('disconnect', () => {
@@ -99,6 +113,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         _resetUI();
         startNavBtn.style.display = 'none';
+        saveRoutineBtn.style.display = 'none';
+    });
+
+    saveRoutineBtn.addEventListener('click', () => {
+        const name = prompt("Enter a name for this routine (e.g. 'Living Room'):");
+        if (name) {
+            if (_zone) {
+                socket.emit('save_routine', { name, type: 'zone', data: _zone });
+            } else if (_waypoints.length > 0) {
+                socket.emit('save_routine', { name, type: 'waypoints', data: _waypoints });
+            }
+        }
     });
 
     clearGoalBtn.addEventListener('click', () => {
@@ -109,7 +135,27 @@ document.addEventListener('DOMContentLoaded', () => {
         _resetUI();
         clearGoalBtn.style.display = 'none';
         startNavBtn.style.display = 'none';
+        saveRoutineBtn.style.display = 'none';
         if (_lastMapData) _drawMap(_lastMapData);
+    });
+
+    routinesSelect.addEventListener('change', (e) => {
+        const idx = e.target.value;
+        if (idx === "") return;
+        const routine = _routinesData[idx];
+        if (routine.type === 'zone') {
+            _zone = routine.data;
+            _waypoints = [];
+        } else {
+            _waypoints = routine.data;
+            _zone = null;
+        }
+        startNavBtn.style.display = 'inline-block';
+        clearGoalBtn.style.display = 'inline-block';
+        saveRoutineBtn.style.display = 'none'; // already saved
+        _resetUI();
+        if (_lastMapData) _drawMap(_lastMapData);
+        routinesSelect.value = ""; // reset dropdown
     });
 
     function _resetUI() {
@@ -140,6 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (_settingGoal) {
             _waypoints.push({ x: worldX, y: worldY });
             startNavBtn.style.display = 'inline-block';
+            saveRoutineBtn.style.display = 'inline-block';
             clearGoalBtn.style.display = 'inline-block';
             _zone = null; // clear any zone
         } else if (_drawingZone) {
@@ -156,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 _zoneStart = null;
                 _waypoints = []; // clear any waypoints
                 startNavBtn.style.display = 'inline-block';
+                saveRoutineBtn.style.display = 'inline-block';
                 clearGoalBtn.style.display = 'inline-block';
                 _resetUI(); // Auto-exit draw mode when complete
             }
@@ -179,6 +227,7 @@ function updateUI(state) {
         _zone = null;
         clearGoalBtn.style.display = 'none';
         startNavBtn.style.display = 'none';
+        saveRoutineBtn.style.display = 'none';
         if (_lastMapData) _drawMap(_lastMapData);
     }
 }
