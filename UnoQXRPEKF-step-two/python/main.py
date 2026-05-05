@@ -129,6 +129,8 @@ def clean_zone(client, data):
     x_min, x_max = min(zone["x_min"], zone["x_max"]), max(zone["x_min"], zone["x_max"])
     y_min, y_max = min(zone["y_min"], zone["y_max"]), max(zone["y_min"], zone["y_max"])
     
+    path = []
+    
     # 1. Perimeter Sweep
     path.append((x_min, y_min))
     path.append((x_max, y_min))
