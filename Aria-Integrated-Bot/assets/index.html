@@ -1,0 +1,185 @@
+<!--
+SPDX-FileCopyrightText: Copyright (C) Arduino s.r.l. and/or its affiliated companies
+SPDX-License-Identifier: MPL-2.0
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA — EKF Dashboard</title>
+    <link rel="icon" type="image/png" href="./img/favicon.png">
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <div class="page-wrapper">
+
+        <!-- ── Header ── -->
+        <div class="header">
+            <h1 class="arduino-text">ARIA — EKF Dashboard</h1>
+            <img class="arduino-logo" src="./img/RGB-Arduino-Logo_Color Inline Loop.svg" alt="Arduino Logo">
+        </div>
+
+        <!-- ── Tab Navigation ── -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" id="tab-control-btn" onclick="switchTab('control')">⚙️ Control</button>
+            <button class="tab-btn" id="tab-map-btn" onclick="switchTab('map')">🗺️ Map</button>
+            <button class="tab-btn" id="tab-pose-btn" onclick="switchTab('pose')">📐 Pose</button>
+            <button class="tab-btn" id="tab-camera-btn" onclick="switchTab('camera')">📷 Camera</button>
+        </nav>
+
+        <!-- ══════════════ TAB: CONTROL ══════════════ -->
+        <div class="tab-panel" id="tab-control">
+            <div class="container">
+                <div class="led-container">
+                    <button id="motor-power-btn" class="led-off">
+                        <span id="power-text">MOTORS OFF</span>
+                    </button>
+                </div>
+                <p class="instruction-text" style="margin-bottom: 20px;">Click to toggle motors 👆</p>
+
+                <div class="slider-section">
+                    <label for="speed-slider" class="instruction-text">
+                        <strong>Target Speed:</strong> <span id="speed-val">160</span>
+                    </label>
+                    <input type="range" id="speed-slider" min="0" max="255" value="160">
+                </div>
+
+                <!-- Raw Sensor Telemetry -->
+                <div class="telemetry-box">
+                    <h3 class="arduino-text section-title">Live Sensor Data</h3>
+                    <div class="telemetry-grid">
+                        <div class="telem-item">
+                            <span class="telem-label">Encoder L</span>
+                            <span class="telem-value" id="enc-l">0</span>
+                        </div>
+                        <div class="telem-item">
+                            <span class="telem-label">Encoder R</span>
+                            <span class="telem-value" id="enc-r">0</span>
+                        </div>
+                        <div class="telem-item full">
+                            <span class="telem-label">IMU Accel (m/s²)</span>
+                            <span class="telem-value" id="imu-accel">X: 0.00 | Y: 0.00 | Z: 0.00</span>
+                        </div>
+                        <div class="telem-item full">
+                            <span class="telem-label">IMU Gyro (rad/s)</span>
+                            <span class="telem-value" id="imu-gyro">X: 0.00 | Y: 0.00 | Z: 0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="error-container" class="error-message" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- ══════════════ TAB: MAP ══════════════ -->
+        <div class="tab-panel hidden" id="tab-map">
+            <div class="container" style="max-width: none; padding: 0;">
+                <div class="map-header" style="padding: 8px 16px;">
+                    <span class="arduino-text section-title">Occupancy Grid</span>
+                    <span class="coverage-badge">Coverage: <strong id="coverage-pct">0%</strong></span>
+                </div>
+                <div class="canvas-wrapper" style="width: 100%; background: #ECF1F1;">
+                    <canvas id="map-canvas" style="display: block; width: 100%; image-rendering: pixelated;"></canvas>
+                </div>
+                <p class="instruction-text" style="margin: 8px 16px; text-align: center;">
+                    🟩 Cleaned &nbsp;|&nbsp; ⬛ Wall &nbsp;|&nbsp; ⬜ Unknown &nbsp;|&nbsp; 🔴 Trajectory &nbsp;|&nbsp; 🔵 Robot &nbsp;|&nbsp; 📍 Goal
+                </p>
+                <div style="text-align: center; margin-bottom: 8px;">
+                    <button id="set-goal-btn" class="tab-btn" style="background: #008184; color: white;">📍 Add Waypoints</button>
+                    <button id="draw-zone-btn" class="tab-btn" style="background: #008184; color: white;">🔲 Draw Zone</button>
+                </div>
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <button id="start-nav-btn" class="tab-btn" style="display: none; background: #4CAF50; color: white;">▶️ Start</button>
+                    <button id="save-routine-btn" class="tab-btn" style="display: none; background: #1976D2; color: white;">💾 Save</button>
+                    <button id="clear-goal-btn" class="tab-btn" style="display: none; background: #e53935; color: white;">❌ Clear</button>
+                </div>
+                <div style="margin: 0 16px 16px 16px;">
+                    <select id="routines-select" style="width: 100%; padding: 12px; border-radius: 8px; background: #008184; color: white; border: none; font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; outline: none; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        <option value="">-- Load Saved Routine --</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════ TAB: POSE ══════════════ -->
+        <div class="tab-panel hidden" id="tab-pose">
+            <div class="container">
+                <div class="telemetry-box">
+                    <h3 class="arduino-text section-title">EKF Estimated Pose</h3>
+                    <div class="telemetry-grid">
+                        <div class="telem-item">
+                            <span class="telem-label">X Position (cm)</span>
+                            <span class="telem-value ekf-value" id="ekf-x">0.00</span>
+                        </div>
+                        <div class="telem-item">
+                            <span class="telem-label">Y Position (cm)</span>
+                            <span class="telem-value ekf-value" id="ekf-y">0.00</span>
+                        </div>
+                        <div class="telem-item full">
+                            <span class="telem-label">Heading θ (degrees)</span>
+                            <span class="telem-value ekf-value" id="ekf-theta">0.0°</span>
+                        </div>
+                        <div class="telem-item full">
+                            <span class="telem-label">Distance from origin (cm)</span>
+                            <span class="telem-value ekf-value" id="ekf-dist">0.00</span>
+                        </div>
+                    </div>
+            </div>
+        </div>
+
+        <!-- ══════════════ TAB: CAMERA ══════════════ -->
+        <div class="tab-panel hidden" id="tab-camera">
+            <div class="container">
+                <h3 class="arduino-text section-title">Live Video & Object Detection</h3>
+                <div id="videoFeedContainer" style="text-align: center; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
+                    <div id="videoPlaceholder" class="camera-status" style="padding: 40px; color: white;">
+                        <p class="feedback-text">Searching Webcam...</p>
+                    </div>
+                    <iframe id="dynamicIframe" title="Video stream" width="100%" height="480px" frameBorder="0" style="display: none;"></iframe>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h4 class="arduino-text">Detection Threshold</h4>
+                    <input type="range" id="confidenceSlider" min="0" max="1" step="0.05" value="0.5" style="width: 100%;">
+                    <p>Confidence: <span id="confidenceValueDisplay">0.5</span></p>
+                </div>
+
+                <div class="recent-detections-section" style="margin-top: 20px;">
+                    <h4 class="arduino-text">Recent Detections</h4>
+                    <ul id="recentDetections" style="list-style: none; padding: 0; max-height: 200px; overflow-y: auto;"></ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const iframe = document.getElementById('dynamicIframe');
+        const placeholder = document.getElementById('videoPlaceholder');
+        const currentHostname = window.location.hostname;
+        const targetPort = 4912;
+        const targetPath = '/embed';
+        const streamUrl = `http://${currentHostname}:${targetPort}${targetPath}`;
+
+        let intervalId;
+
+        iframe.onload = () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+            placeholder.style.display = 'none';
+            iframe.style.display = 'block';
+        };
+
+        const startLoading = () => {
+            iframe.src = streamUrl;
+        };
+
+        intervalId = setInterval(startLoading, 1000); // Try to load every second
+    </script>
+
+    <script src="libs/socket.io.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
