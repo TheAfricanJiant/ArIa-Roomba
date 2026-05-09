@@ -1,7 +1,6 @@
 from arduino.app_utils import *
 from arduino.app_bricks.web_ui import WebUI
 from arduino.app_bricks.telegram_bot import TelegramBot, Sender, Message
-from arduino.app_bricks.object_detection import ObjectDetection
 from arduino.app_bricks.mood_detector import MoodDetector
 from arduino.app_bricks.video_objectdetection import VideoObjectDetection
 from PIL import Image
@@ -12,6 +11,7 @@ import logging
 import time
 import json
 import os
+import urllib.request
 
 import serial_bridge
 import motor
@@ -25,7 +25,6 @@ log = logging.getLogger(__name__)
 # ── Initialize bricks ──────────────────────────────────────────────────────────
 ui = WebUI()
 bot = TelegramBot()
-obj_detection = ObjectDetection()
 mood = MoodDetector()
 video_detection = VideoObjectDetection(confidence=0.5, debounce_sec=0.0)
 
@@ -129,6 +128,58 @@ def set_goal(client, data):
     ui.send_message('state_update', get_state())
     log.info(f"Goal set to: {x}, {y}")
 
+def set_path(client, data):
+    global state
+    points = data.get("path", [])
+    if not points:
+        return
+    path = [(p["x"], p["y"]) for p in points]
+    nav.set_path(path, state["speed"])
+    state["navigating"] = True
+    state["motors_on"] = True
+    ui.send_message('state_update', get_state())
+    ui.send_message('path_update', [{"x": p[0], "y": p[1]} for p in path])
+    log.info(f"Path set with {len(path)} waypoints")
+
+def clean_zone(client, data):
+    global state
+    zone = data.get("zone")
+    if not zone:
+        return
+    x_min, x_max = min(zone["x_min"], zone["x_max"]), max(zone["x_min"], zone["x_max"])
+    y_min, y_max = min(zone["y_min"], zone["y_max"]), max(zone["y_min"], zone["y_max"])
+    
+    path = []
+    path.append((x_min, y_min))
+    path.append((x_max, y_min))
+    path.append((x_max, y_max))
+    path.append((x_min, y_max))
+    path.append((x_min, y_min))
+    
+    lane_width = 20.0
+    current_y = y_min + lane_width / 2.0
+    going_right = True
+    
+    while current_y <= y_max:
+        if going_right:
+            path.append((x_min, current_y))
+            path.append((x_max, current_y))
+        else:
+            path.append((x_max, current_y))
+            path.append((x_min, current_y))
+        current_y += lane_width
+        going_right = not going_right
+        
+    if not path:
+        return
+        
+    nav.set_path(path, state["speed"])
+    state["navigating"] = True
+    state["motors_on"] = True
+    ui.send_message('state_update', get_state())
+    ui.send_message('path_update', [{"x": p[0], "y": p[1]} for p in path])
+    log.info(f"Zone cleaning started with {len(path)} waypoints")
+
 def clear_goal(client, data):
     global state
     nav.clear_goal()
@@ -214,21 +265,24 @@ def savearea_cmd(sender: Sender, message: Message):
     sender.reply(f"✅ Area '{area_name}' saved at current position!")
 
 def detect_objects(sender: Sender, message: Message, photo: bytes, filename: str, size: int):
-    sender.reply("📷 Processing static image...")
-    image = Image.open(BytesIO(photo))
-    results = obj_detection.detect(image, confidence=0.1)
-    img_with_boxes = obj_detection.draw_bounding_boxes(image, results)
-    
-    output = BytesIO()
-    img_with_boxes.save(output, format="PNG")
-    output.seek(0)
-    
-    caption = f"✅ Found {len(results['detection'])} object(s)!" if results else "No objects detected"
-    sender.reply_photo(output.getvalue(), caption)
+    sender.reply("🚧 Static photo analysis is disabled to prevent camera hardware conflicts. The robot is using live video detection instead!")
 
 def sentiment(sender: Sender, message: Message):
     result = mood.get_sentiment(message.text)
     sender.reply(f"Text Sentiment: {result}")
+
+def photo_cmd(sender: Sender, message: Message):
+    sender.reply("📷 Taking snapshot...")
+    try:
+        req = urllib.request.Request("http://127.0.0.1:4912/?action=snapshot")
+        with urllib.request.urlopen(req, timeout=5) as response:
+            photo_bytes = response.read()
+        sender.reply_photo(photo_bytes, "✅ Current Camera View")
+    except Exception as e:
+        sender.reply(f"❌ Failed to capture photo: {e}")
+
+def record_cmd(sender: Sender, message: Message):
+    sender.reply("🚧 Video recording is not yet supported by the camera stream. Use /photo instead.")
 
 # Register Telegram Commands
 bot.add_command("hello", greet, "Get a personalized greeting")
@@ -237,6 +291,8 @@ bot.add_command("forward", forward_cmd, "Drive forward")
 bot.add_command("stop", stop_cmd, "Emergency stop")
 bot.add_command("goto", goto_cmd, "Navigate to a saved area")
 bot.add_command("savearea", savearea_cmd, "Save current position")
+bot.add_command("photo", photo_cmd, "Take a live camera snapshot")
+bot.add_command("record", record_cmd, "Record a video clip")
 bot.on_text(sentiment)
 bot.on_photo(detect_objects)
 
@@ -245,6 +301,8 @@ ui.on_message('toggle_power', toggle_power)
 ui.on_message('set_speed', set_speed)
 ui.on_message('get_initial_state', on_get_initial_state)
 ui.on_message('set_goal', set_goal)
+ui.on_message('set_path', set_path)
+ui.on_message('clean_zone', clean_zone)
 ui.on_message('clear_goal', clear_goal)
 ui.on_message('save_routine', save_routine)
 
