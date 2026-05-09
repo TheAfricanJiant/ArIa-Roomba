@@ -132,11 +132,9 @@ SPDX-License-Identifier: MPL-2.0
         <div class="tab-panel hidden" id="tab-camera">
             <div class="container">
                 <h3 class="arduino-text section-title">Live Video & Object Detection</h3>
-                <div id="videoFeedContainer" style="text-align: center; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
-                    <div id="videoPlaceholder" class="camera-status" style="padding: 40px; color: white;">
-                        <p class="feedback-text">Searching Webcam...</p>
-                    </div>
-                    <iframe id="dynamicIframe" title="Video stream" width="100%" height="480px" frameBorder="0" style="display: none;"></iframe>
+                <div id="videoFeedContainer" style="text-align: center; background: #000; border-radius: 8px; overflow: hidden; position: relative; padding: 10px;">
+                    <!-- Show iframe directly to reveal any connection errors -->
+                    <iframe id="dynamicIframe" title="Video stream" width="100%" height="480px" frameBorder="0" style="background: white;"></iframe>
                 </div>
                 
                 <div style="margin-top: 20px;">
@@ -158,27 +156,13 @@ SPDX-License-Identifier: MPL-2.0
 
     <script>
         const iframe = document.getElementById('dynamicIframe');
-        const placeholder = document.getElementById('videoPlaceholder');
         const currentHostname = window.location.hostname;
-        const targetPort = 4912;
-        const targetPath = '/embed';
-        const streamUrl = `http://${currentHostname}:${targetPort}${targetPath}`;
+        const streamUrl = `http://${currentHostname}:4912/embed`;
 
-        let intervalId;
-
-        iframe.onload = () => {
-            if (intervalId) {
-                clearInterval(intervalId);
-            }
-            placeholder.style.display = 'none';
-            iframe.style.display = 'block';
-        };
-
-        const startLoading = () => {
+        // Start loading the stream after a brief delay to let the backend initialize
+        setTimeout(() => {
             iframe.src = streamUrl;
-        };
-
-        intervalId = setInterval(startLoading, 1000); // Try to load every second
+        }, 2000);
     </script>
 
     <script src="libs/socket.io.min.js"></script>
