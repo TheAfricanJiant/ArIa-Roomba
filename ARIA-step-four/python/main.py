@@ -357,37 +357,42 @@ def _get_frame(timeout=10):
     return raw
 
 def photo_cmd(sender: Sender, message: Message):
-    sender.reply("\ud83d\udcf7 Capturing snapshot\u2026")
+    # Telegram requires valid UTF-8; use BMP or single non-BMP escapes (\U), never UTF-16 surrogate pairs (\ud800-\udfff).
+    sender.reply("\U0001f4f7 Capturing snapshot...")
     raw = _get_frame(timeout=10)
     if raw is None:
         dets = camera.get_latest_detections()
         if dets:
-            lines = ["\ud83d\udcf7 No frame yet. Last detections:"]
+            lines = ["No video frame yet. Last detections from the Brick:"]
             for label, entries in dets.items():
                 if isinstance(entries, list):
                     for e in entries:
                         conf = round(e.get("confidence", 0) * 100, 1) if isinstance(e, dict) else round(float(e) * 100, 1)
-                        lines.append(f"  \u2022 {label} ({conf}%)")
+                        lines.append(f"  - {label} ({conf}%)")
                 else:
-                    lines.append(f"  \u2022 {label} ({round(float(entries)*100,1)}%)")
+                    lines.append(f"  - {label} ({round(float(entries)*100,1)}%)")
             sender.reply("\n".join(lines))
         else:
-            sender.reply("\u274c Camera not ready. Ensure USB camera is connected and the Camera tab is open in the web UI.")
+            sender.reply(
+                "Camera not ready: no MJPEG from :4912 and no USB grab. "
+                "Open http://YOUR_IP:4912/embed in a browser on the LAN; "
+                "use http (not https) for the dashboard; ensure Network Mode + powered hub."
+            )
         return
-    if not sender.reply_photo(raw, "\ud83d\udcf8 ARIA live snapshot"):
-        sender.reply("\u274c Snapshot captured but could not be sent.")
+    if not sender.reply_photo(raw, "\U0001f4f8 ARIA live snapshot"):
+        sender.reply("Snapshot captured but could not be sent via Telegram.")
 
 def detect_cmd(sender: Sender, message: Message):
     detections = camera.get_latest_detections()
-    lines = ["\ud83d\udd0d *ARIA Detection Report:*"]
+    lines = ["*ARIA Detection Report:*"]
     if detections:
         for label, entries in detections.items():
             if isinstance(entries, list):
                 for e in entries:
                     conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
-                    lines.append(f"  \u2022 {label} ({conf}%)")
+                    lines.append(f"  - {label} ({conf}%)")
             else:
-                lines.append(f"  \u2022 {label} ({round(float(entries)*100,1)}%)")
+                lines.append(f"  - {label} ({round(float(entries)*100,1)}%)")
     else:
         lines.append("  Nothing detected yet.")
     caption = "\n".join(lines)
@@ -402,7 +407,7 @@ def record_cmd(sender: Sender, message: Message):
     args = message.text.strip().split()
     secs = int(args[1]) if len(args) > 1 and args[1].isdigit() else 5
     secs = max(1, min(15, secs))
-    sender.reply(f"\ud83c\udfa5 Recording {secs}s GIF\u2026")
+    sender.reply(f"Recording {secs}s GIF...")
     def _do_record():
         import io as _io
         from PIL import Image as _Img
@@ -417,14 +422,14 @@ def record_cmd(sender: Sender, message: Message):
                 except: pass
             time.sleep(interval)
         if not frames:
-            sender.reply("\u274c No frames captured. Ensure camera is connected and web UI Camera tab is open.")
+            sender.reply("No frames captured. Try :4912 embed in browser, http dashboard, or check USB webcam.")
             return
         buf = _io.BytesIO()
         frames[0].save(buf, format="GIF", save_all=True,
                        append_images=frames[1:], duration=250, loop=0)
         buf.seek(0)
-        if not sender.reply_photo(buf.getvalue(), f"\ud83c\udfa5 {secs}s clip ({len(frames)} frames)"):
-            sender.reply("\u274c GIF too large. Try /record 3.")
+        if not sender.reply_photo(buf.getvalue(), f"{secs}s clip ({len(frames)} frames)"):
+            sender.reply("GIF too large for Telegram. Try /record 3.")
     threading.Thread(target=_do_record, daemon=True).start()
 
 def vacuum_cmd(sender: Sender, message: Message):

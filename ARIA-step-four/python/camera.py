@@ -48,36 +48,60 @@ def _store_frame(data: bytes):
 
 # ── HTTP probe: check if a URL returns raw JPEG / MJPEG ──────────────────────
 def _http_probe(path):
-    url = f"http://localhost:{PORT}{path}"
-    try:
-        resp = urllib.request.urlopen(url, timeout=4)
-        ct   = resp.headers.get("Content-Type", "")
-        first = resp.read(65536)   # read up to 64 KB
-        log.info(f"HTTP {url}: ct={ct!r} len={len(first)}")
+    for host in ("127.0.0.1", "localhost"):
+        url = f"http://{host}:{PORT}{path}"
+        try:
+            resp = urllib.request.urlopen(url, timeout=4)
+            ct   = resp.headers.get("Content-Type", "")
+            first = resp.read(65536)   # read up to 64 KB
+            log.info(f"HTTP {url}: ct={ct!r} len={len(first)}")
 
-        # Case 1: raw JPEG
-        if b"\xff\xd8" in first:
-            if b"<html" not in first[:200].lower():
-                log.info(f"HTTP: Found JPEG bytes at {url}!")
-                _store_frame(first)
-                return ("jpeg", url, resp, first)
+            # Case 1: raw JPEG
+            if b"\xff\xd8" in first:
+                if b"<html" not in first[:200].lower():
+                    log.info(f"HTTP: Found JPEG bytes at {url}!")
+                    _store_frame(first)
+                    return ("jpeg", url, resp, first)
 
-        # Case 2: MJPEG multipart stream
-        if "multipart" in ct.lower():
-            log.info(f"HTTP: MJPEG multipart stream at {url}!")
-            return ("mjpeg", url, resp, first)
+            # Case 2: MJPEG multipart stream
+            if "multipart" in ct.lower():
+                log.info(f"HTTP: MJPEG multipart stream at {url}!")
+                return ("mjpeg", url, resp, first)
 
-        # Case 3: HTML — extract URLs for WebSocket/fetch probing
-        if b"<html" in first[:200].lower() or "html" in ct.lower():
-            ws_urls    = re.findall(rb'["\']?(ws[s]?://[^\'">\s]+)', first)
-            fetch_urls = re.findall(rb"fetch\(['\"]([^'\"]+)['\"]", first)
-            img_srcs   = re.findall(rb'src=["\']([^"\']{2,})["\']', first)
-            log.info(f"HTML {url}: ws={ws_urls} fetch={fetch_urls} srcs={img_srcs[:5]}")
-            return ("html", url, None, {"ws": ws_urls, "fetch": fetch_urls, "srcs": img_srcs})
+            # Case 3: HTML — extract URLs for WebSocket/fetch probing
+            if b"<html" in first[:200].lower() or "html" in ct.lower():
+                ws_urls    = re.findall(rb'["\']?(ws[s]?://[^\'">\s]+)', first)
+                fetch_urls = re.findall(rb"fetch\(['\"]([^'\"]+)['\"]", first)
+                img_srcs   = re.findall(rb'src=["\']([^"\']{2,})["\']', first)
+                log.info(f"HTML {url}: ws={ws_urls} fetch={fetch_urls} srcs={img_srcs[:5]}")
+                resp.close()
 
-        resp.close()
-    except Exception as e:
-        log.debug(f"HTTP {url}: {e}")
+                # Case 4: Relative <img src="..."> on embed page (Brick often serves stream here)
+                for m in img_srcs[:12]:
+                    sub = m.decode(errors="replace").strip()
+                    if not sub or sub.startswith("data:") or sub.startswith("blob:"):
+                        continue
+                    tail = sub if sub.startswith("/") else "/" + sub
+                    suburl = f"http://{host}:{PORT}{tail}"
+                    try:
+                        sr = urllib.request.urlopen(suburl, timeout=4)
+                        ct2 = (sr.headers.get("Content-Type") or "").lower()
+                        chunk = sr.read(524288)
+                        sr.close()
+                        if "multipart" in ct2:
+                            rr = urllib.request.urlopen(suburl, timeout=4)
+                            return ("mjpeg", suburl, rr, chunk)
+                        if b"\xff\xd8" in chunk and b"<html" not in chunk[:200].lower():
+                            log.info(f"Camera: JPEG from embedded img src {suburl}")
+                            _store_frame(chunk)
+                            return ("jpeg", suburl, None, chunk)
+                    except Exception as e2:
+                        log.debug("embedded img probe %s: %s", suburl, e2)
+                return ("html", url, None, {"ws": ws_urls, "fetch": fetch_urls, "srcs": img_srcs})
+
+            resp.close()
+        except Exception as e:
+            log.info(f"HTTP {url}: {type(e).__name__}: {e}")
     return None
 
 
@@ -266,9 +290,47 @@ def start_frame_grabber():
     t = threading.Thread(target=_main_loop, daemon=True)
     t.start()
 
+def grab_jpeg_v4l2(device_index=0):
+    """Direct USB webcam grab when VideoObjectDetection Brick HTTP (:4912) is down.
+    Uses OpenCV; may fail if the Brick already has exclusive camera access."""
+    try:
+        import cv2  # noqa: PLC0415
+    except ImportError:
+        log.debug("OpenCV not installed — no V4L2 fallback.")
+        return None
+    cap = None
+    try:
+        cap = cv2.VideoCapture(device_index, getattr(cv2, "CAP_V4L2", 0))
+        if not cap or not cap.isOpened():
+            if cap:
+                cap.release()
+            cap = cv2.VideoCapture(device_index)
+        if not cap.isOpened():
+            return None
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            return None
+        ok, enc = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+        if not ok:
+            return None
+        return bytes(enc)
+    except Exception as e:
+        log.info("V4L2/OpenCV snapshot: %s", e)
+        return None
+    finally:
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception:
+                pass
+
 def get_snapshot_jpeg():
     with _frame_lock:
-        return _latest_frame_jpeg
+        cached = _latest_frame_jpeg
+    if cached:
+        return cached
+    v = grab_jpeg_v4l2()
+    return v
 
 def record_gif(duration_sec=5, fps=4):
     from PIL import Image as _Img

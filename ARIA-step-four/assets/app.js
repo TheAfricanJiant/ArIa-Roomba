@@ -705,19 +705,26 @@ function cellColor(val) {
     socket.on('record_error', (data) => { setStatus(data.error, '#ef5350'); });
 
     // ===== DIAGNOSTICS =====
-    // 1. Listen for ANY postMessage from the iframe (brick may post frames this way)
+    // postMessage from camera iframe only (ignore MetaMask/wallet/browser-ext noise on same origin)
     window.addEventListener('message', (event) => {
+        const d = event.data;
+        let s = '';
+        try {
+            s = typeof d === 'string' ? d : JSON.stringify(d || {});
+        } catch (_) { return; }
+        if (/metamask|chainChanged|metamask-provider|wallet/i.test(s)) return;
+
         const src = event.origin || 'unknown';
-        if (src.includes('4912') || src.includes('localhost') || src.includes(window.location.hostname)) {
-            const preview = typeof event.data === 'string'
-                ? event.data.substring(0, 200)
-                : (event.data instanceof ArrayBuffer ? 'ArrayBuffer:' + event.data.byteLength + 'bytes' : JSON.stringify(event.data).substring(0, 200));
-            setStatus('postMessage from ' + src + ': ' + preview, '#FFA726');
-            socket.emit('diag_result', { source: 'postMessage', origin: src, preview: preview });
-            // If it looks like a JPEG base64, use it!
-            if (typeof event.data === 'string' && event.data.startsWith('/9j/')) {
-                socket.emit('frame_from_browser', { image: event.data });
-            }
+        const fromBrick = src.includes(':4912') || /^\s*\/9j\//.test(typeof d === 'string' ? d : '');
+        if (!fromBrick && !(typeof d === 'string' && d.startsWith('/9j/'))) return;
+
+        const preview = typeof d === 'string'
+            ? d.substring(0, 200)
+            : (d instanceof ArrayBuffer ? 'ArrayBuffer:' + d.byteLength + 'bytes' : s.substring(0, 200));
+        setStatus('postMessage from ' + src + ': ' + preview, '#FFA726');
+        socket.emit('diag_result', { source: 'postMessage', origin: src, preview: preview });
+        if (typeof d === 'string' && d.startsWith('/9j/')) {
+            socket.emit('frame_from_browser', { image: d });
         }
     });
 
@@ -736,6 +743,7 @@ function cellColor(val) {
                     socket.emit('diag_result', { source: 'fetch_probe', results: results });
                     return;
                 }
+                // Must use plain http dashboard; mixed content blocks http:4912 if page is https
                 const url = 'http://' + host + ':4912' + paths[i];
                 fetch(url, { mode: 'cors', signal: AbortSignal.timeout(3000) })
                     .then(r => {
