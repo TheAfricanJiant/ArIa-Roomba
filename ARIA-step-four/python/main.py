@@ -342,7 +342,18 @@ def detect_cmd(sender: Sender, message: Message):
         sender.reply("\n".join(lines))
 
 def record_cmd(sender: Sender, message: Message):
-    sender.reply("🎥 Video recording not yet implemented — needs ffmpeg integration.")
+    args = message.text.strip().split()
+    secs = int(args[1]) if len(args) > 1 and args[1].isdigit() else 5
+    secs = max(1, min(15, secs))  # cap at 15 seconds
+    sender.reply(f"🎥 Recording {secs}s GIF from live camera…")
+    def _do_record():
+        gif = camera.record_gif(duration_sec=secs, fps=4)
+        if gif is None:
+            sender.reply("❌ Recording failed — no camera frames available. Ensure USB camera is connected.")
+        else:
+            if not sender.reply_photo(gif, f"🎥 {secs}s recording ({secs*4} frames)"):
+                sender.reply("❌ GIF recorded but could not be sent via Telegram (file may be too large).")
+    threading.Thread(target=_do_record, daemon=True).start()
 
 def vacuum_cmd(sender: Sender, message: Message):
     sender.reply("🌀 Vacuum hardware not yet wired.")
@@ -528,6 +539,18 @@ def on_live_detection(detections: dict):
 
 detection_stream.on_detect_all(on_live_detection)
 
+def ui_record(client, data):
+    duration = int(data.get("duration", 5))
+    duration = max(1, min(15, duration))
+    def _run():
+        import base64 as _b64
+        gif = camera.record_gif(duration_sec=duration, fps=4)
+        if gif is None:
+            ui.send_message("record_error", {"error": "No camera frames — check USB camera connection"}, client)
+        else:
+            ui.send_message("record_result", {"gif": _b64.b64encode(gif).decode(), "frames": duration * 4}, client)
+    threading.Thread(target=_run, daemon=True).start()
+
 # ══════════════════════════════════════════════════════════════════════════════
 # REGISTER WEB UI HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -541,6 +564,7 @@ ui.on_message("clear_goal",        clear_goal)
 ui.on_message("save_routine",      save_routine)
 ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
+ui.on_message("camera_record",     ui_record)
 ui.on_message("override_th",       lambda sid, v: detection_stream.override_threshold(float(v)))
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -548,4 +572,5 @@ ui.on_message("override_th",       lambda sid, v: detection_stream.override_thre
 # ══════════════════════════════════════════════════════════════════════════════
 threading.Thread(target=telemetry.telemetry_loop, args=(ui,), daemon=True).start()
 threading.Thread(target=navigation_loop, daemon=True).start()
+camera.start_frame_grabber()   # start pulling JPEG frames from the brick stream
 App.run()

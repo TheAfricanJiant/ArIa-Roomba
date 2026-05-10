@@ -627,8 +627,26 @@ function cellColor(val) {
             </li>`;
         }).join('');
     }
-
-    // â”€â”€ download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // -- record GIF
+    const recordBtn = document.getElementById('camera-record-btn');
+    if (recordBtn) {
+        recordBtn.addEventListener('click', () => {
+            setStatus('Recording 5s GIF... please wait', '#FFA726');
+            recordBtn.disabled = true;
+            socket.emit('camera_record', { duration: 5 });
+            setTimeout(() => { recordBtn.disabled = false; }, 7000);
+        });
+    }
+    socket.on('record_result', (data) => {
+        if (!data.gif) { setStatus('Recording returned no data', '#ef5350'); return; }
+        _lastResultB64 = data.gif;
+        camImg.src = 'data:image/gif;base64,' + data.gif;
+        camImg.style.display = 'block';
+        downloadBtn.style.display = 'inline-block';
+        setStatus('GIF recorded (' + data.frames + ' frames)', '#4CAF50');
+    });
+    socket.on('record_error', (data) => { setStatus(data.error, '#ef5350'); });
+    // -- download
     downloadBtn.addEventListener('click', () => {
         if (!_lastResultB64) return;
         const a = document.createElement('a');
