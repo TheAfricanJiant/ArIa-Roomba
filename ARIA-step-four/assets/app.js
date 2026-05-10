@@ -41,6 +41,63 @@ const CELL_OBSTACLE = 4;
 // â”€â”€ Socket â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const socket = io(`http://${window.location.host}`);
 
+/** Binary to base64 in chunks (avoids stack limits on huge frames). */
+function u8ToBase64Chunked(u8) {
+    const cs = 0x8000;
+    let bin = '';
+    for (let i = 0; i < u8.length; i += cs) {
+        bin += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + cs, u8.length)));
+    }
+    return btoa(bin);
+}
+
+/** Find first JPEG SOI-EOI in buffer (MJPEG multipart first frame). */
+function extractFirstJpegBytes(arrayBuffer, maxScan) {
+    const cap = typeof maxScan === 'number' ? maxScan : 2 * 1024 * 1024;
+    const u = new Uint8Array(arrayBuffer.byteLength > cap ? arrayBuffer.slice(0, cap) : arrayBuffer);
+    let soi = -1;
+    for (let i = 0; i < u.length - 1; i++) {
+        if (u[i] === 0xff && u[i + 1] === 0xd8) { soi = i; break; }
+    }
+    if (soi < 0) return null;
+    for (let j = soi + 2; j < u.length - 1; j++) {
+        if (u[j] === 0xff && u[j + 1] === 0xd9) return u.subarray(soi, j + 2);
+    }
+    return null;
+}
+
+/** Grab one JPEG from VideoObjectDetection on port 4912. */
+async function fetchOneJpegFromBrick4912(host) {
+    const paths = ['/snapshot', '/stream', '/', '/video', '/frame', '/mjpeg', '/cam', '/embed'];
+    for (let i = 0; i < paths.length; i++) {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 4000);
+        try {
+            const r = await fetch(`http://${host}:4912${paths[i]}`, {
+                signal: controller.signal,
+                mode: 'cors',
+                cache: 'no-store',
+            });
+            const jpeg = extractFirstJpegBytes(await r.arrayBuffer());
+            if (jpeg && jpeg.byteLength > 500) return u8ToBase64Chunked(jpeg);
+        } catch (_) { /* try next */ } finally {
+            clearTimeout(tid);
+        }
+    }
+    return null;
+}
+
+socket.on('request_frame', async () => {
+    const host = window.location.hostname;
+    let b64 = null;
+    try {
+        b64 = await fetchOneJpegFromBrick4912(host);
+    } catch (e) {
+        console.warn('request_frame', e);
+    }
+    socket.emit('frame_from_browser', { image: b64 || null });
+});
+
 // â”€â”€ Tab switching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function switchTab(name) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));

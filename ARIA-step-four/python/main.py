@@ -317,19 +317,30 @@ def resetpose_cmd(sender: Sender, message: Message):
 _frame_store = {"data": None, "event": None}
 
 def _request_frame_from_browser(timeout=10):
-    """Ask connected browser to capture and return a JPEG frame.
+    """Ask connected browser to fetch one JPEG frame from :4912 and return it via Socket.IO.
     Returns raw bytes or None."""
     import base64 as _b64
     evt = threading.Event()
     _frame_store["data"] = None
     _frame_store["event"] = evt
-    ui.send_message("request_frame", {})  # broadcast to all connected browsers
-    if evt.wait(timeout=timeout) and _frame_store["data"]:
+    ui.send_message("request_frame", {})  # frontend must reply with frame_from_browser
+    try:
+        if not evt.wait(timeout=timeout):
+            return None
+        raw_b64 = _frame_store.get("data")
+        if not raw_b64:
+            return None
         try:
-            return _b64.b64decode(_frame_store["data"])
+            out = _b64.b64decode(raw_b64)
         except Exception:
             return None
-    return None
+        try:
+            camera._latest_frame_jpeg = out
+        except Exception:
+            pass
+        return out
+    finally:
+        _frame_store["event"] = None
 
 def _get_frame(timeout=10):
     """Get a JPEG frame: try camera module first, then ask browser.
@@ -559,9 +570,14 @@ bot.on_photo(detect_objects)
 # CAMERA WEB UI HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
 def ui_take_snapshot(client, data):
-    raw = camera.get_snapshot_jpeg()
+    raw = _get_frame(timeout=12)
     if raw is None:
-        ui.send_message("snapshot_error", {"error": "Camera stream not available"}, client); return
+        ui.send_message(
+            "snapshot_error",
+            {"error": "Camera stream not ready. Open the Camera tab, check USB webcam + powered hub (Network Mode), or wait ~10s for the stream probe."},
+            client,
+        )
+        return
     import base64 as _b64
     b64 = _b64.b64encode(raw).decode()
     ui.send_message("snapshot_result", {"image": b64}, client)
@@ -601,7 +617,7 @@ def on_live_detection(detections: dict):
 detection_stream.on_detect_all(on_live_detection)
 
 def ui_record(client, data):
-    """Web UI Record button — uses browser-side frame relay."""
+    """Record a short GIF — server-side MJPEG grab when possible, browser relay as fallback."""
     duration = int(data.get("duration", 5))
     duration = max(1, min(15, duration))
     def _run():
@@ -610,7 +626,7 @@ def ui_record(client, data):
         frames = []
         total = duration * 4   # 4 fps
         for _ in range(total):
-            raw = _request_frame_from_browser(timeout=3)
+            raw = _get_frame(timeout=4)
             if raw:
                 try:
                     img = _Img.open(_io.BytesIO(raw)).convert("P", palette=_Img.ADAPTIVE)
@@ -628,17 +644,12 @@ def ui_record(client, data):
     threading.Thread(target=_run, daemon=True).start()
 
 def frame_from_browser(client, data):
-    """Receives a Canvas-captured JPEG base64 from the browser for Telegram commands."""
-    if _frame_store.get("event") is not None:
-        _frame_store["data"] = data.get("image")
-        # Also store in camera module for future calls
-        if _frame_store["data"]:
-            import base64 as _b64
-            try:
-                camera._latest_frame_jpeg = _b64.b64decode(_frame_store["data"])
-            except Exception:
-                pass
-        _frame_store["event"].set()
+    """Receives a JPEG base64 from the browser (fetch from :4912) for Telegram / relay."""
+    evt = _frame_store.get("event")
+    if evt is None:
+        return
+    _frame_store["data"] = (data or {}).get("image")
+    evt.set()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
