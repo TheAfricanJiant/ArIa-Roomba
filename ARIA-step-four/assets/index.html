@@ -134,35 +134,49 @@ SPDX-License-Identifier: MPL-2.0
         <div class="tab-panel hidden" id="tab-camera">
             <div class="container">
                 <div class="telemetry-box">
-                    <h3 class="arduino-text section-title">📷 Camera</h3>
+                    <h3 class="arduino-text section-title">📷 Live Camera</h3>
 
-                    <!-- Live image / result display -->
-                    <div id="camera-preview-wrapper" style="width:100%;min-height:240px;background:#1a1a2e;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;overflow:hidden;">
-                        <img id="camera-img" src="" alt="" style="max-width:100%;max-height:480px;display:none;border-radius:12px;">
-                        <span id="camera-placeholder" style="color:#666;font-size:14px;">No image yet — take a snapshot or upload one</span>
+                    <!-- Live MJPEG stream from VideoObjectDetection brick at :4912/embed -->
+                    <div id="cam-stream-wrapper" style="width:100%;background:#0d0d1a;border-radius:12px;margin-bottom:12px;overflow:hidden;min-height:240px;display:flex;align-items:center;justify-content:center;">
+                        <div id="cam-placeholder" style="color:#555;font-size:14px;text-align:center;padding:24px;">Connecting to camera…<br><small>Ensure a USB camera is connected</small></div>
+                        <iframe id="cam-iframe"
+                            title="ARIA live camera"
+                            style="display:none;width:100%;border:none;border-radius:12px;"
+                            height="360"
+                            frameborder="0"
+                            allowfullscreen>
+                        </iframe>
                     </div>
 
-                    <!-- Status message -->
-                    <p id="camera-status" style="text-align:center;font-size:13px;color:#aaa;margin-bottom:12px;"></p>
+                    <!-- Status / confidence -->
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+                        <label class="instruction-text" style="flex:1;min-width:160px;">
+                            <strong>Confidence:</strong> <span id="cam-confidence-val">50</span>%
+                            <input type="range" id="cam-confidence" min="1" max="99" value="50" style="width:100%;margin-top:4px;">
+                        </label>
+                        <p id="camera-status" style="flex:1;font-size:13px;color:#aaa;margin:0;"></p>
+                    </div>
 
                     <!-- Action buttons -->
                     <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:16px;">
                         <button id="snapshot-btn" class="tab-btn" style="background:#008184;color:white;">📸 Snapshot</button>
-                        <button id="detect-btn" class="tab-btn" style="background:#1976D2;color:white;">🔍 Snapshot + Detect</button>
                         <button id="camera-upload-btn" class="tab-btn" style="background:#555;color:white;">📂 Upload Image</button>
                         <button id="camera-detect-upload-btn" class="tab-btn" style="background:#6a1b9a;color:white;">🔍 Upload + Detect</button>
                         <button id="camera-download-btn" class="tab-btn" style="display:none;background:#388e3c;color:white;">⬇️ Download</button>
                     </div>
 
+                    <!-- Snapshot result image -->
+                    <img id="camera-img" src="" alt="" style="max-width:100%;border-radius:12px;display:none;margin-bottom:12px;">
+
                     <!-- Hidden file input -->
                     <input type="file" id="camera-file-input" accept="image/png,image/jpeg" style="display:none;">
 
-                    <!-- Confidence slider -->
-                    <div class="slider-section" style="margin-bottom:8px;">
-                        <label for="cam-confidence" class="instruction-text">
-                            <strong>Confidence:</strong> <span id="cam-confidence-val">50</span>%
-                        </label>
-                        <input type="range" id="cam-confidence" min="1" max="99" value="50">
+                    <!-- Live detections log -->
+                    <div class="telemetry-box" style="margin-top:8px;">
+                        <h4 class="arduino-text section-title" style="margin-bottom:8px;">🔍 Recent Detections</h4>
+                        <ul id="cam-detections-list" style="list-style:none;padding:0;margin:0;max-height:160px;overflow-y:auto;">
+                            <li style="color:#555;font-size:13px;">Waiting for detections…</li>
+                        </ul>
                     </div>
                 </div>
             </div>

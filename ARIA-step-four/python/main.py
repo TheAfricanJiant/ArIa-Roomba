@@ -13,14 +13,19 @@ import threading, logging, json, os, time, math
 
 import serial_bridge, motor, telemetry, navigator, camera
 
+from arduino.app_bricks.video_objectdetection import VideoObjectDetection
+from datetime import datetime, timezone
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 # ── Bricks ───────────────────────────────────────────────────────────────────
-bot          = TelegramBot()
-obj_detection = ObjectDetection()
-mood         = MoodDetector()
-ui           = WebUI()
+bot            = TelegramBot()
+obj_detection  = ObjectDetection()
+mood           = MoodDetector()
+ui             = WebUI()
+detection_stream = VideoObjectDetection(confidence=0.5, debounce_sec=0.0)
+camera.register_stream(detection_stream)
 
 # ── Robot state ───────────────────────────────────────────────────────────────
 state = {"motors_on": False, "speed": 160, "navigating": False, "mode": "manual"}
@@ -304,23 +309,37 @@ def resetpose_cmd(sender: Sender, message: Message):
     sender.reply("🔄 Pose reset to origin (0, 0, 0°)")
 
 def photo_cmd(sender: Sender, message: Message):
-    sender.reply("📷 Capturing snapshot...")
-    raw = camera.capture_snapshot()
+    sender.reply("📷 Capturing snapshot from live feed...")
+    raw = camera.get_snapshot_jpeg()
     if raw is None:
-        sender.reply("❌ Camera not available. Attach a USB camera and ensure opencv-python-headless is installed."); return
-    if not sender.reply_photo(raw, "📸 ARIA snapshot"):
+        sender.reply("❌ Could not capture frame. Ensure a USB camera is connected and the app is running."); return
+    if not sender.reply_photo(raw, "📸 ARIA live snapshot"):
         sender.reply("❌ Failed to send snapshot.")
 
 def detect_cmd(sender: Sender, message: Message):
-    sender.reply("🔍 Capturing and detecting...")
-    result = camera.detect_on_snapshot(obj_detection)
-    if "error" in result:
-        sender.reply(f"❌ {result['error']}"); return
-    import base64 as _b64
-    raw = _b64.b64decode(result["result_image"])
-    caption = f"✅ Found {result['detection_count']} object(s)!"
-    if not sender.reply_photo(raw, caption):
-        sender.reply("❌ Failed to send detection result.")
+    detections = camera.get_latest_detections()
+    raw = camera.get_snapshot_jpeg()
+    if not detections and raw is None:
+        sender.reply("🔍 No detections yet — make sure a USB camera is connected."); return
+    if raw:
+        lines = ["🔍 *Live Detections:*"]
+        if detections:
+            for label, entries in detections.items():
+                for e in entries:
+                    conf = round(e.get("confidence", 0) * 100, 1) if isinstance(e, dict) else round(float(e) * 100, 1)
+                    lines.append(f"  • {label} ({conf}%)")
+        else:
+            lines.append("  No objects detected in last frame.")
+        caption = "\n".join(lines)
+        if not sender.reply_photo(raw, caption):
+            sender.reply(caption)
+    else:
+        lines = ["🔍 *Last Detections:*"]
+        for label, entries in detections.items():
+            for e in entries:
+                conf = round(e.get("confidence", 0) * 100, 1) if isinstance(e, dict) else round(float(e) * 100, 1)
+                lines.append(f"  • {label} ({conf}%)")
+        sender.reply("\n".join(lines))
 
 def record_cmd(sender: Sender, message: Message):
     sender.reply("🎥 Video recording not yet implemented — needs ffmpeg integration.")
@@ -468,27 +487,23 @@ bot.on_photo(detect_objects)
 # CAMERA WEB UI HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
 def ui_take_snapshot(client, data):
-    raw = camera.capture_snapshot()
+    raw = camera.get_snapshot_jpeg()
     if raw is None:
-        ui.send_message("snapshot_error", {"error": "Camera not available"}, client); return
+        ui.send_message("snapshot_error", {"error": "Camera stream not available"}, client); return
     import base64 as _b64
     b64 = _b64.b64encode(raw).decode()
     ui.send_message("snapshot_result", {"image": b64}, client)
 
 def ui_camera_detect(client, data):
-    # Called for both snapshot+detect and upload+detect
-    img_b64 = data.get("image")  # upload+detect passes image from browser
+    # Upload + detect only (live stream detect is done by the brick)
+    img_b64 = data.get("image")
     confidence = data.get("confidence", 0.5)
     import base64 as _b64, io as _io
     try:
-        if img_b64:
-            raw_bytes = _b64.b64decode(img_b64)
-            pil_img = Image.open(_io.BytesIO(raw_bytes))
-        else:
-            raw = camera.capture_snapshot()
-            if raw is None:
-                ui.send_message("detection_error", {"error": "Camera not available"}, client); return
-            pil_img = Image.open(_io.BytesIO(raw))
+        if not img_b64:
+            ui.send_message("detection_error", {"error": "No image provided — use Upload+Detect"}, client); return
+        raw_bytes = _b64.b64decode(img_b64)
+        pil_img = Image.open(_io.BytesIO(raw_bytes))
         results = obj_detection.detect(pil_img, confidence=confidence)
         annotated = obj_detection.draw_bounding_boxes(pil_img, results)
         buf = _io.BytesIO(); annotated.save(buf, format="PNG"); buf.seek(0)
@@ -498,11 +513,20 @@ def ui_camera_detect(client, data):
     except Exception as e:
         ui.send_message("detection_error", {"error": str(e)}, client)
 
-def ui_stream_start(client, data):
-    camera.start_stream(ui)
+# Live detection callback from VideoObjectDetection brick
+def on_live_detection(detections: dict):
+    camera.on_detections(detections)
+    for label, entries in detections.items():
+        for e in entries:
+            conf = e.get("confidence", 0) if isinstance(e, dict) else float(e)
+            entry = {
+                "content": label,
+                "confidence": conf,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            ui.send_message("detection", entry)
 
-def ui_stream_stop(client, data):
-    camera.stop_stream()
+detection_stream.on_detect_all(on_live_detection)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # REGISTER WEB UI HANDLERS
@@ -517,8 +541,7 @@ ui.on_message("clear_goal",        clear_goal)
 ui.on_message("save_routine",      save_routine)
 ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
-ui.on_message("stream_start",      ui_stream_start)
-ui.on_message("stream_stop",       ui_stream_stop)
+ui.on_message("override_th",       lambda sid, v: detection_stream.override_threshold(float(v)))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # START BACKGROUND THREADS & RUN

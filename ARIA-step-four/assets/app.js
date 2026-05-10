@@ -1,4 +1,4 @@
-// ── Element references ──────────────────────────────────────────────────────
+﻿// â”€â”€ Element references â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const powerBtn    = document.getElementById('motor-power-btn');
 const powerText   = document.getElementById('power-text');
 const speedSlider = document.getElementById('speed-slider');
@@ -31,17 +31,17 @@ let _zoneStart = null; // {x, y}
 let _zone = null; // {x_min, y_min, x_max, y_max}
 let _routinesData = [];
 
-// ── Cell state constants (match Python OccupancyGrid uint8 values) ──────────
+// â”€â”€ Cell state constants (match Python OccupancyGrid uint8 values) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CELL_UNKNOWN  = 0;
 const CELL_FREE     = 1;
 const CELL_CLEANED  = 2;
 const CELL_WALL     = 3;
 const CELL_OBSTACLE = 4;
 
-// ── Socket ───────────────────────────────────────────────────────────────────
+// â”€â”€ Socket â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const socket = io(`http://${window.location.host}`);
 
-// ── Tab switching ─────────────────────────────────────────────────────────────
+// â”€â”€ Tab switching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function switchTab(name) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -49,7 +49,7 @@ function switchTab(name) {
     document.getElementById(`tab-${name}-btn`).classList.add('active');
 }
 
-// ── Socket event wiring ───────────────────────────────────────────────────────
+// â”€â”€ Socket event wiring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 document.addEventListener('DOMContentLoaded', () => {
     socket.on('connect', () => { socket.emit('get_initial_state', {}); });
     socket.on('state_update',     (s) => updateUI(s));
@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setGoalBtn.style.background = '#005e60';
         drawZoneBtn.style.background = '#008184';
         setGoalBtn.textContent = 'Click to add points...';
-        drawZoneBtn.textContent = '🔲 Draw Zone';
+        drawZoneBtn.textContent = 'ðŸ”² Draw Zone';
         _zoneStart = null;
     });
 
@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
         drawZoneBtn.style.background = '#005e60';
         setGoalBtn.style.background = '#008184';
         drawZoneBtn.textContent = 'Click 2 corners...';
-        setGoalBtn.textContent = '📍 Add Waypoints';
+        setGoalBtn.textContent = 'ðŸ“ Add Waypoints';
         _zoneStart = null;
     });
 
@@ -164,8 +164,8 @@ document.addEventListener('DOMContentLoaded', () => {
         mapCanvas.style.cursor = 'default';
         setGoalBtn.style.background = '#008184';
         drawZoneBtn.style.background = '#008184';
-        setGoalBtn.textContent = '📍 Add Waypoints';
-        drawZoneBtn.textContent = '🔲 Draw Zone';
+        setGoalBtn.textContent = 'ðŸ“ Add Waypoints';
+        drawZoneBtn.textContent = 'ðŸ”² Draw Zone';
     }
 
     // Map click handler
@@ -213,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ── UI helpers ────────────────────────────────────────────────────────────────
+// â”€â”€ UI helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function updateUI(state) {
     const isOn = state.motors_on;
     powerBtn.className   = isOn ? 'led-on' : 'led-off';
@@ -242,7 +242,7 @@ function updateTelemetry(data) {
 function updateEKF(e) {
     ekfX.textContent     = e.x_cm.toFixed(2);
     ekfY.textContent     = e.y_cm.toFixed(2);
-    ekfTheta.textContent = `${(e.theta_rad * 180 / Math.PI).toFixed(1)}°`;
+    ekfTheta.textContent = `${(e.theta_rad * 180 / Math.PI).toFixed(1)}Â°`;
     ekfDist.textContent  = Math.sqrt(e.x_cm ** 2 + e.y_cm ** 2).toFixed(2);
 
     // Update robot position and redraw map immediately (smooth motion)
@@ -255,20 +255,20 @@ function updateEKF(e) {
             _trajectory.push({ x: e.x_cm, y: e.y_cm });
         }
     }
-    _drawMap(_lastMapData); // always redraw — works even without map data
+    _drawMap(_lastMapData); // always redraw â€” works even without map data
 }
 
-// ── Map state ─────────────────────────────────────────────────────────────────
+// â”€â”€ Map state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _latestPose  = null;
 let _trajectory  = [];
 let _lastMapData = null;
 
-// Viewport: always show robot at centre, ±300 cm visible
+// Viewport: always show robot at centre, Â±300 cm visible
 const HALF_VIEW = 300;  // cm
 const MAP_PX    = 600;  // canvas px
 const PX_PER_CM = MAP_PX / (HALF_VIEW * 2);
 
-/** World cm → canvas px, centred on robot. */
+/** World cm â†’ canvas px, centred on robot. */
 function w2p(wx, wy) {
     const cx = _latestPose ? _latestPose.x_cm : 0;
     const cy = _latestPose ? _latestPose.y_cm : 0;
@@ -285,7 +285,7 @@ function renderMap(m) {
 }
 
 function _drawMap(m) {
-    // m can be null on first render — draw background/trajectory/robot without grid
+    // m can be null on first render â€” draw background/trajectory/robot without grid
     const cols       = m ? m.cols       : 33;
     const rows       = m ? m.rows       : 33;
     const data       = m ? m.data       : null;
@@ -296,11 +296,11 @@ function _drawMap(m) {
     mapCanvas.width  = MAP_PX;
     mapCanvas.height = MAP_PX;
 
-    // 1 ── Background
+    // 1 â”€â”€ Background
     mapCtx.fillStyle = '#E8EEEE';
     mapCtx.fillRect(0, 0, MAP_PX, MAP_PX);
 
-    // 2 ── Occupancy grid cells (only non-UNKNOWN, skip if no data)
+    // 2 â”€â”€ Occupancy grid cells (only non-UNKNOWN, skip if no data)
     const cellPx = cell_cm * PX_PER_CM;
     if (data) {
         for (let r = 0; r < rows; r++) {
@@ -316,7 +316,7 @@ function _drawMap(m) {
         }
     }
 
-    // 3 ── Grid lines
+    // 3 â”€â”€ Grid lines
     const robotX = _latestPose ? _latestPose.x_cm : 0;
     const robotY = _latestPose ? _latestPose.y_cm : 0;
     mapCtx.strokeStyle = 'rgba(0,0,0,0.09)';
@@ -332,7 +332,7 @@ function _drawMap(m) {
         mapCtx.beginPath(); mapCtx.moveTo(0, p.y); mapCtx.lineTo(MAP_PX, p.y); mapCtx.stroke();
     }
 
-    // 4 ── Origin crosshair (blue dashes)
+    // 4 â”€â”€ Origin crosshair (blue dashes)
     const op = w2p(0, 0);
     mapCtx.strokeStyle = 'rgba(33,150,243,0.6)';
     mapCtx.lineWidth   = 1.5;
@@ -341,7 +341,7 @@ function _drawMap(m) {
     mapCtx.beginPath(); mapCtx.moveTo(op.x, op.y - 14); mapCtx.lineTo(op.x, op.y + 14); mapCtx.stroke();
     mapCtx.setLineDash([]);
 
-    // 5 ── Trajectory path (red line)
+    // 5 â”€â”€ Trajectory path (red line)
     if (_trajectory.length > 1) {
         mapCtx.beginPath();
         mapCtx.strokeStyle = 'rgba(229, 57, 53, 0.95)';
@@ -360,7 +360,7 @@ function _drawMap(m) {
         mapCtx.fill();
     }
 
-    // 6 ── Robot marker (always at canvas centre)
+    // 6 â”€â”€ Robot marker (always at canvas centre)
     const theta = _latestPose ? _latestPose.theta_rad : 0;
     const R = 12;
     mapCtx.save();
@@ -383,7 +383,7 @@ function _drawMap(m) {
     mapCtx.stroke();
     mapCtx.restore();
 
-    // 7 ── Zone and Waypoints
+    // 7 â”€â”€ Zone and Waypoints
     if (_zone) {
         const p1 = w2p(_zone.x_min, _zone.y_max);
         const p2 = w2p(_zone.x_max, _zone.y_min);
@@ -459,7 +459,7 @@ function _drawMap(m) {
         });
     }
 
-    // 8 ── Coordinate label (bottom-left)
+    // 8 â”€â”€ Coordinate label (bottom-left)
     mapCtx.fillStyle = 'rgba(0,0,0,0.5)';
     mapCtx.font      = '11px monospace';
     const lbl = _latestPose
@@ -473,95 +473,102 @@ function cellColor(val) {
     if (val === CELL_OBSTACLE) return '#b71c1c';  // deep red
     if (val === CELL_CLEANED)  return '#26a69a';  // teal green
     if (val === CELL_FREE)     return '#b2dfdb';  // light teal
-    return '#E8EEEE';                             // unknown — same as background
+    return '#E8EEEE';                             // unknown â€” same as background
 }
-// ═══════════════════════════════════════════════════════════════════════════
-// CAMERA TAB — live stream, snapshot, detect, upload
-// ═══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CAMERA TAB â€” iframe live stream + snapshot + upload+detect + detections log
+// Stream is served automatically by the arduino:video_object_detection brick
+// at http://BOARD:4912/embed â€” no manual start/stop needed.
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 (function () {
-    const camImg         = document.getElementById('camera-img');
-    const camPlaceholder = document.getElementById('camera-placeholder');
+    const camIframe      = document.getElementById('cam-iframe');
+    const camPlaceholder = document.getElementById('cam-placeholder');
     const camStatus      = document.getElementById('camera-status');
+    const camImg         = document.getElementById('camera-img');
     const snapshotBtn    = document.getElementById('snapshot-btn');
-    const detectBtn      = document.getElementById('detect-btn');
     const uploadBtn      = document.getElementById('camera-upload-btn');
     const detectUploadBtn= document.getElementById('camera-detect-upload-btn');
     const downloadBtn    = document.getElementById('camera-download-btn');
     const fileInput      = document.getElementById('camera-file-input');
     const confidenceSlider = document.getElementById('cam-confidence');
     const confidenceVal  = document.getElementById('cam-confidence-val');
+    const detectionsList = document.getElementById('cam-detections-list');
 
-    let _streaming = false;
-    let _lastResultB64 = null;
-    let _uploadedB64   = null;
+    const STREAM_PORT = 4912;
+    const STREAM_PATH = '/embed';
+    let _streamIntervalId = null;
+    let _lastResultB64    = null;
+    let _uploadedB64      = null;
+    const MAX_DETECTIONS  = 6;
+    let _detections       = [];
 
-    // ── helpers ──────────────────────────────────────────────────────────────
-    function showImage(b64, mime) {
-        camImg.src = `data:${mime};base64,${b64}`;
-        camImg.style.display = 'block';
-        camPlaceholder.style.display = 'none';
-        downloadBtn.style.display = 'inline-block';
+    // â”€â”€ iframe auto-retry (same pattern as video-generic-object-detection) â”€â”€â”€â”€
+    function startIframeStream() {
+        if (_streamIntervalId) return;
+        const url = `http://${window.location.hostname}:${STREAM_PORT}${STREAM_PATH}`;
+        camIframe.onload = () => {
+            if (_streamIntervalId) { clearInterval(_streamIntervalId); _streamIntervalId = null; }
+            camPlaceholder.style.display = 'none';
+            camIframe.style.display = 'block';
+            setStatus('Live stream active âœ…', '#4CAF50');
+        };
+        camIframe.onerror = () => setStatus('Camera not detected', '#ef5350');
+        _streamIntervalId = setInterval(() => { camIframe.src = url; }, 1500);
+        camIframe.src = url;
     }
 
-    function setStatus(msg, color) {
-        camStatus.textContent = msg;
-        camStatus.style.color = color || '#aaa';
+    function stopIframeStream() {
+        if (_streamIntervalId) { clearInterval(_streamIntervalId); _streamIntervalId = null; }
+        camIframe.src = '';
+        camIframe.style.display = 'none';
+        camPlaceholder.style.display = 'block';
+        setStatus('', '');
     }
 
-    // ── confidence slider ─────────────────────────────────────────────────────
-    confidenceSlider.addEventListener('input', () => {
-        confidenceVal.textContent = confidenceSlider.value;
-    });
-
-    // ── live stream toggle (via stream-start / stream-stop tab switching) ─────
-    // Start stream when tab becomes active, stop when leaving
+    // â”€â”€ Auto-start/stop stream when Camera tab is active â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const origSwitchTab = window.switchTab;
     window.switchTab = function (name) {
         origSwitchTab(name);
-        if (name === 'camera') {
-            _streaming = true;
-            socket.emit('stream_start', {});
-            setStatus('Live stream active', '#4CAF50');
-        } else if (_streaming) {
-            _streaming = false;
-            socket.emit('stream_stop', {});
-        }
+        if (name === 'camera') startIframeStream();
+        else stopIframeStream();
     };
 
-    // ── receive live frames ───────────────────────────────────────────────────
-    socket.on('camera_frame', (data) => {
-        if (_streaming && data.frame) {
-            camImg.src = `data:image/jpeg;base64,${data.frame}`;
-            camImg.style.display = 'block';
-            camPlaceholder.style.display = 'none';
-        }
+    // â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function setStatus(msg, color) {
+        if (camStatus) { camStatus.textContent = msg; camStatus.style.color = color || '#aaa'; }
+    }
+
+    function showSnapshotImage(b64) {
+        camImg.src = `data:image/jpeg;base64,${b64}`;
+        camImg.style.display = 'block';
+        downloadBtn.style.display = 'inline-block';
+        _lastResultB64 = b64;
+    }
+
+    // â”€â”€ confidence slider â†’ override_th â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    confidenceSlider.addEventListener('input', () => {
+        const v = parseInt(confidenceSlider.value) / 100;
+        confidenceVal.textContent = confidenceSlider.value;
+        socket.emit('override_th', v);
     });
 
-    // ── snapshot ──────────────────────────────────────────────────────────────
+    // â”€â”€ snapshot button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     snapshotBtn.addEventListener('click', () => {
-        setStatus('Capturing snapshot…', '#FFA726');
+        setStatus('Capturing snapshotâ€¦', '#FFA726');
         socket.emit('take_snapshot', {});
     });
 
     socket.on('snapshot_result', (data) => {
-        _lastResultB64 = data.image;
-        showImage(data.image, 'image/png');
-        setStatus('Snapshot captured ✅', '#4CAF50');
+        showSnapshotImage(data.image);
+        setStatus('Snapshot captured âœ…', '#4CAF50');
     });
 
     socket.on('snapshot_error', (data) => {
-        setStatus(`❌ ${data.error}`, '#ef5350');
+        setStatus(`âŒ ${data.error}`, '#ef5350');
     });
 
-    // ── snapshot + detect ─────────────────────────────────────────────────────
-    detectBtn.addEventListener('click', () => {
-        setStatus('Capturing and detecting…', '#FFA726');
-        const confidence = parseInt(confidenceSlider.value) / 100;
-        socket.emit('camera_detect', { confidence });
-    });
-
-    // ── upload image ──────────────────────────────────────────────────────────
+    // â”€â”€ upload image â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     uploadBtn.addEventListener('click', () => fileInput.click());
 
     fileInput.addEventListener('change', (e) => {
@@ -570,39 +577,65 @@ function cellColor(val) {
         const reader = new FileReader();
         reader.onload = (ev) => {
             _uploadedB64 = ev.target.result.split(',')[1];
-            showImage(_uploadedB64, file.type);
-            setStatus('Image loaded — click Upload+Detect to analyse', '#90CAF9');
+            showSnapshotImage(_uploadedB64);
+            setStatus('Image loaded â€” click Upload+Detect to analyse', '#90CAF9');
         };
         reader.readAsDataURL(file);
         fileInput.value = '';
     });
 
-    // ── upload + detect ───────────────────────────────────────────────────────
+    // â”€â”€ upload + detect â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     detectUploadBtn.addEventListener('click', () => {
         if (!_uploadedB64) { setStatus('Upload an image first', '#ef5350'); return; }
-        setStatus('Running detection…', '#FFA726');
+        setStatus('Running detectionâ€¦', '#FFA726');
         const confidence = parseInt(confidenceSlider.value) / 100;
         socket.emit('camera_detect', { image: _uploadedB64, confidence });
     });
 
-    // ── receive detection result ──────────────────────────────────────────────
     socket.on('detection_result', (data) => {
         if (!data.result_image) return;
         _lastResultB64 = data.result_image;
-        showImage(data.result_image, 'image/png');
-        setStatus(`✅ Found ${data.detection_count} object(s)!`, '#4CAF50');
+        camImg.src = `data:image/png;base64,${data.result_image}`;
+        camImg.style.display = 'block';
+        downloadBtn.style.display = 'inline-block';
+        setStatus(`âœ… Found ${data.detection_count} object(s)!`, '#4CAF50');
     });
 
     socket.on('detection_error', (data) => {
-        setStatus(`❌ ${data.error}`, '#ef5350');
+        setStatus(`âŒ ${data.error}`, '#ef5350');
     });
 
-    // ── download result ───────────────────────────────────────────────────────
+    // â”€â”€ live detections from VideoObjectDetection brick â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    socket.on('detection', (entry) => {
+        _detections.unshift(entry);
+        if (_detections.length > MAX_DETECTIONS) _detections.pop();
+        renderDetections();
+    });
+
+    function renderDetections() {
+        if (!detectionsList) return;
+        if (_detections.length === 0) {
+            detectionsList.innerHTML = '<li style="color:#555;font-size:13px;">Waiting for detectionsâ€¦</li>';
+            return;
+        }
+        detectionsList.innerHTML = _detections.map(d => {
+            const pct = Math.floor((d.confidence || 0) * 100);
+            const ts  = d.timestamp ? new Date(d.timestamp).toLocaleTimeString() : '';
+            return `<li style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px;">
+                <span style="color:#4CAF50;font-weight:600;">${d.content}</span>
+                <span style="color:#aaa;">${pct}% &nbsp; <span style="color:#555;">${ts}</span></span>
+            </li>`;
+        }).join('');
+    }
+
+    // â”€â”€ download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     downloadBtn.addEventListener('click', () => {
         if (!_lastResultB64) return;
         const a = document.createElement('a');
-        a.href = `data:image/png;base64,${_lastResultB64}`;
-        a.download = `aria-capture-${Date.now()}.png`;
+        const mime = _lastResultB64.startsWith('/9j/') ? 'jpeg' : 'png';
+        a.href = `data:image/${mime};base64,${_lastResultB64}`;
+        a.download = `aria-capture-${Date.now()}.${mime}`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
     });
 })();
+
