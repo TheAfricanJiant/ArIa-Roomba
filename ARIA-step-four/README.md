@@ -1,124 +1,306 @@
-# Linux Blink with UI (JavaScript)
+# ARIA — Step Four: Integrated Robot Platform 🤖
 
-The **Linux Blink** example shows a simple Linux application that changes the LED state on the board. It showcases basic event handling and UI updates through a web-based interface.
+**ARIA (Autonomous Robotic Intelligence Architecture)** is a fully integrated robotics platform running on the **Arduino UNO Q**. It combines EKF-based navigation, a live-streaming camera with AI object detection, a Telegram remote-control interface, and a real-time web dashboard — all in a single application.
 
-![Linux Blink App](assets/docs_assets/linux-blink-banner.png)
+![ARIA Web Dashboard](assets/docs_assets/linux-blink-banner.png)
 
-## Description
+---
 
-This example toggles an LED on the board using a simple web user interface. The application listens for user input through a web browser and updates the LED state accordingly. It shows how to interact with hardware from a Linux environment and provides a basis for building more complex hardware-interfacing applications.
+## What's Inside
 
-The `assets` folder contains the **frontend** components of the application. Inside, you'll find the JavaScript source files along with the HTML and CSS files that make up the web user interface. The `python` folder instead includes the application **backend**.
+ARIA Step Four is the integration of three prior projects into one cohesive app:
 
-The interactive toggle switch UI is generated with JavaScript, while the Arduino sketch manages the LED hardware control. The Router Bridge enables communication between the web interface and the microcontroller.
+| Project | Role in ARIA |
+|---|---|
+| [`UnoQXRPEKF-step-two`](../UnoQXRPEKF-step-two) | 🧭 Robot Brain — EKF navigation, motor control, occupancy grid, web UI |
+| [`telegram-bot-step-three`](../telegram-bot-step-three) | 📱 Remote Control — Full Telegram bot interface for all robot functions |
+| [`object-detection`](../object-detection) + [`video-generic-object-detection`](../video-generic-object-detection) | 👁️ Vision — Live camera stream + AI object detection |
+
+---
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────┐
+│                  Arduino UNO Q (Linux)                  │
+│                                                        │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │  Web UI     │  │ Telegram Bot │  │  Camera AI   │  │
+│  │  :7000      │  │  (remote)    │  │  :4912/embed │  │
+│  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  │
+│         │                │                  │           │
+│         └────────────────┴──────────────────┘           │
+│                          │                              │
+│         ┌────────────────▼──────────────────┐           │
+│         │           main.py                 │           │
+│         │  - EKF navigation loop            │           │
+│         │  - Motor control                  │           │
+│         │  - Telemetry & occupancy grid     │           │
+│         │  - Telegram command handlers      │           │
+│         │  - Camera detection callbacks     │           │
+│         └────────────────┬──────────────────┘           │
+│                          │ Serial (USB)                 │
+│         ┌────────────────▼──────────────────┐           │
+│         │         Arduino sketch.ino         │           │
+│         │  - Encoder + IMU bridge            │           │
+│         │  - Motor PWM output                │           │
+│         └───────────────────────────────────┘           │
+└────────────────────────────────────────────────────────┘
+```
+
+---
 
 ## Bricks Used
 
-The Linux blink example uses the following Bricks:
+| Brick | Purpose |
+|---|---|
+| `arduino:web_ui` | Serves the real-time web dashboard at `:7000` |
+| `arduino:telegram_bot` | Full Telegram bot remote control interface |
+| `arduino:object_detection` | AI object detection on uploaded images |
+| `arduino:mood_detector` | Sentiment analysis for Telegram text messages |
+| `arduino:video_object_detection` | Live USB camera stream + real-time detection at `:4912/embed` |
 
-- `web_ui`: Brick to create a web interface to display the LED control toggle switch.
+---
 
-## Hardware and Software Requirements
+## Hardware Requirements
 
-### Hardware
+- **Arduino UNO Q** (x1) — runs the full application as a Linux SBC
+- **USB-C hub** with external power (5 V, 3 A) — for USB camera + connectivity
+- **USB camera** (x1) — for live stream and object detection
+- **Robot chassis** with two DC motors + encoders
+- **IMU** (Nano 33 BLE Sense or similar) connected via Serial
 
-- Arduino UNO Q (x1)
-- USB-C® cable (for power and programming) (x1)
+---
 
-### Software
+## Software Requirements
 
-- Arduino App Lab
+- **Arduino App Lab**
+- A **Telegram account** + bot token from [@BotFather](https://t.me/BotFather)
+- Python dependencies (installed automatically or via `pip install -r python/requirements.txt`):
+  - `filterpy`, `numpy`, `pyserial`, `matplotlib`, `Pillow`
 
-**Note:** You can run this example using your Arduino UNO Q as a Single Board Computer (SBC) using a [USB-C® hub](https://store.arduino.cc/products/usb-c-to-hdmi-multiport-adapter-with-ethernet-and-usb-hub) with a mouse, keyboard and display attached.
+---
 
-## How to Use the Example
+## How to Set Up
 
-1. Run the App
-   ![Arduino App Lab - Run App](assets/docs_assets/app-lab-run-app.png)
-2. Open the App in your browser at `<UNO-Q-IP-ADDRESS>:7000`
-3. Click on the circular switch to change the state of the LED
+### 1. Create a Telegram Bot
 
-## How it Works
+![Telegram Bot Setup](assets/docs_assets/telegramBotExampleDiagram.png)
 
-Once the application is running, the device performs the following operations:
+1. Open Telegram and search for **@BotFather**
+2. Send `/newbot` and follow the prompts
+3. Copy your **API token** (format: `123456789:AA...`)
 
-- **Serving the web interface and handling WebSocket communication.**
+### 2. Configure the Telegram Brick
 
-The `web_ui` Brick provides the web server and WebSocket communication:
+![Configure Telegram Token](assets/docs_assets/brickConfigTelegram.png)
 
-```python
-from arduino.app_bricks.web_ui import WebUI
+In Arduino App Lab, open the **ARIA-step-four** app, click the **Telegram Bot** brick in the left panel → **Brick Configuration**, and paste your token.
 
-ui = WebUI()
-ui.on_message('toggle_led', toggle_led_state)
-ui.on_message('get_initial_state', on_get_initial_state)
+### 3. Connect Hardware
+
+1. Connect your robot chassis motors and encoders to the Arduino (sketch side)
+2. Plug the USB camera into the UNO Q via the USB-C hub
+3. Connect power to the hub
+
+### 4. Run the App
+
+![Run App in Arduino App Lab](assets/docs_assets/app-lab-run-app.png)
+
+Click **Run** in Arduino App Lab. The app will:
+- Open the web dashboard automatically at `http://<board-name>.local:7000`
+- Start the Telegram bot (ready to receive commands)
+- Start the live camera stream at `http://<board-name>.local:4912/embed`
+
+---
+
+## Web Dashboard
+
+The web UI has four tabs:
+
+| Tab | What it shows |
+|---|---|
+| ⚙️ **Control** | Motor on/off toggle, speed slider, live IMU + encoder data |
+| 🗺️ **Map** | Interactive occupancy grid — click to set waypoints, draw clean zones |
+| 📐 **Pose** | Real-time EKF position (X, Y, θ) and distance from origin |
+| 📷 **Camera** | Live annotated camera stream, snapshot, upload + detect, detections log |
+
+---
+
+## Telegram Commands
+
+### 🎮 Movement
+| Command | Action |
+|---|---|
+| `/forward [speed]` | Drive forward |
+| `/backward [speed]` | Drive backward |
+| `/left` | Spin left |
+| `/right` | Spin right |
+| `/stop` | Emergency stop |
+| `/speed <0-255>` | Set motor speed |
+| `/mode <auto\|manual>` | Switch driving mode |
+
+### 🧹 Cleaning
+| Command | Action |
+|---|---|
+| `/clean` | Full-room lawnmower pattern |
+| `/cleanzone x1 y1 x2 y2` | Clean a rectangular zone (in cm) |
+| `/stopclean` | Abort cleaning |
+| `/dock` | Return to saved dock position |
+| `/setdock` | Save current position as dock |
+
+### 📍 Navigation
+| Command | Action |
+|---|---|
+| `/goto <name>` | Navigate to a named saved area |
+| `/areas` | List all saved areas |
+| `/savearea <name>` | Save current position as a named area |
+| `/deletearea <name>` | Delete a saved area |
+| `/cancelpath` | Cancel current navigation |
+
+### 📊 Status & Telemetry
+| Command | Action |
+|---|---|
+| `/status` | Full status: mode, speed, pose, coverage |
+| `/pose` | EKF position X, Y, θ |
+| `/sensors` | Raw encoder + IMU data |
+| `/coverage` | Occupancy grid coverage % |
+| `/battery` | Battery level *(hardware stub)* |
+
+### 📷 Camera & Vision
+| Command | Action |
+|---|---|
+| `/photo` | Capture and send live camera snapshot |
+| `/detect` | Snapshot + list current detected objects |
+| *(Send a photo)* | Run AI object detection on any image you send |
+
+![Object Detection Result](assets/docs_assets/special-detection.png)
+
+### 🗺️ Map
+| Command | Action |
+|---|---|
+| `/map` | Render and send the occupancy grid as an image |
+| `/heatmap` | Dirt heatmap *(coming soon)* |
+| `/resetpose` | Reset EKF to origin (0, 0, 0°) |
+
+### 🔧 Utilities
+| Command | Action |
+|---|---|
+| `/ping` | Check bot is alive |
+| `/help` | Full command list |
+| `/hello` | Greeting |
+| *(Send any text)* | AI mood/sentiment analysis |
+
+---
+
+## Live Camera
+
+![Live Camera Object Detection](assets/docs_assets/video-object-detection.png)
+
+The camera tab streams live annotated video directly from the `video_object_detection` brick:
+- **Bounding boxes** drawn in real-time on detected objects
+- **Confidence slider** to tune detection sensitivity
+- **📸 Snapshot** button to capture a still frame
+- **📂 Upload + Detect** to run detection on any uploaded image
+- **Recent Detections** list updated live as objects are spotted
+
+---
+
+## How It Works — Data Flow
+
+```
+USB Camera
+    │
+    ▼
+VideoObjectDetection brick ──► annotated MJPEG ──► browser iframe :4912/embed
+    │
+    ├──► on_detect_all() ──► ui.send_message("detection") ──► web detections list
+    │
+    └──► camera.on_detections() ──► /detect Telegram command
+
+Encoders + IMU (Arduino sketch)
+    │  Serial
+    ▼
+serial_bridge.py ──► telemetry.py (EKF + occupancy grid)
+    │
+    ├──► ui.send_message("ekf_update")  ──► Pose tab live update
+    ├──► ui.send_message("map_update")  ──► Map tab live render
+    └──► navigator.py step() ──► motor.py ──► motors move
 ```
 
-- **Communicating LED state to the Arduino.**
+---
 
-The Router Bridge sends LED commands to the microcontroller:
-
-```python
-   Bridge.call("set_led_state", led_is_on)
-```
-
-- **Controlling the hardware LED.**
-
-The Arduino sketch handles the LED hardware control:
-
-```cpp
-   void set_led_state(bool state) {
-      digitalWrite(LED_BUILTIN, state ? LOW : HIGH);
-   }
-```
-
-The high-level data flow looks like this:
+## Project Structure
 
 ```
-Web Browser Toggle → WebSocket → Python Backend → Router Bridge → Arduino LED Control
+ARIA-step-four/
+├── app.yaml                  # Bricks manifest
+├── README.md                 # This file
+├── assets/
+│   ├── index.html            # Web UI (4 tabs: Control, Map, Pose, Camera)
+│   ├── app.js                # UI logic + Socket.IO handlers
+│   ├── style.css             # Styling
+│   └── docs_assets/          # Images for this README
+├── python/
+│   ├── main.py               # Combined app entry point (467+ lines)
+│   ├── camera.py             # Camera helper (snapshot from brick stream)
+│   ├── motor.py              # Motor command sender
+│   ├── navigator.py          # Waypoint following + A* path planner
+│   ├── telemetry.py          # EKF + dead reckoning + occupancy grid
+│   ├── serial_bridge.py      # Arduino serial communication
+│   ├── requirements.txt      # Python dependencies
+│   └── aria/                 # EKF, occupancy grid, A* modules
+└── sketch/
+    ├── sketch.ino            # Arduino encoder + IMU bridge
+    └── sketch.yaml           # Build configuration
 ```
 
-## Understanding the Code
+---
 
-Here is a brief explanation of the application components:
+## Origin Projects
 
-### 🔧 Backend (`main.py`)
+### 🧭 UnoQXRPEKF-step-two — Robot Brain
 
-The Python code manages the web interface, handles user interactions, and communicates with the Arduino.
+The navigation and sensor foundation. Provides:
 
-- **`ui = WebUI()`:** Initializes the web server that serves the HTML interface and handles WebSocket communication.
+- Extended Kalman Filter (EKF) localization from wheel encoders + IMU
+- Occupancy grid mapping with configurable cell resolution
+- A* path planning between waypoints
+- Web UI dashboard with live map, pose, and motor controls
+- Router Bridge to Arduino for encoder/IMU data and motor PWM
 
-- **`ui.on_message('toggle_led', toggle_led_state)`:** Registers a WebSocket message handler that responds when the user clicks the toggle button in the web interface.
+### 📱 telegram-bot-step-three — Remote Control
 
-- **`ui.send_message('led_status_update', get_led_status())`:** Sends LED status updates to all connected web clients in real-time.
+The Telegram interface layer. Provides:
 
-- **`Bridge.call("set_led_state", led_is_on)`:** Calls the Arduino function to physically control the LED hardware.
+![Telegram Data Flow](assets/docs_assets/telegramBotExampleDiagram.png)
 
-- **`get_led_status()`:** Returns the current LED state as a dictionary for the web interface.
+- Full command suite for movement, navigation, cleaning, and telemetry
+- Mood/sentiment analysis on text messages
+- Object detection on photos sent to the bot
 
-### 🔧 Frontend (`index.html` + `app.js`)
+### 👁️ object-detection + video-generic-object-detection — Vision
 
-The web interface provides a simple toggle button for LED control.
+The AI vision layer. Provides:
 
-- **Socket.IO connection:** Establishes WebSocket communication with the Python backend through the `web_ui` Brick.
+![Object Detection on Uploaded Image](assets/docs_assets/object-detection-thumbnail.png)
 
-- **`socket.emit('toggle_led', {})`:** Sends a toggle message to the backend when the user clicks the button.
+- Uploaded image object detection with bounding boxes (via `arduino:object_detection`)
+- Live USB camera stream with real-time annotated detections (via `arduino:video_object_detection`)
+- Hardware setup for USB camera via USB-C hub:
 
-- **`socket.on('led_status_update', updateLedStatus)`:** Receives LED status updates and updates the button appearance accordingly.
+![Camera Hardware Setup](assets/docs_assets/hardware-setup.png)
 
-- **`updateLedStatus(status)`:** Changes the button's visual state (LED IS ON/OFF) based on the received status.
+---
 
-### 🔧 Hardware (`sketch.ino`)
+## Commands Still To Implement
 
-The Arduino code handles LED hardware control and sets up Bridge communication.
-
-- **`pinMode(LED_BUILTIN, OUTPUT)`:** Configures the built-in LED pin as an output for controlling the LED state.
-
-- **`Bridge.begin()`:** Initializes the Router Bridge communication system for receiving commands from Python.
-
-- **`Bridge.provide(...)`:** Registers the `set_led_state` function to be callable from the Python web interface.
-
-- **`set_led_state(bool state)`:** Controls the LED hardware by setting the pin HIGH or LOW based on the received state parameter.
-
-- **Empty `loop()`:** The main loop remains empty since all LED control is event-driven through Bridge function calls.
-
+| Command | What's needed |
+|---|---|
+| `/record` | `ffmpeg` or OpenCV `VideoWriter` for video clips |
+| `/battery` | Hardware battery voltage sensor |
+| `/heatmap` | Dirt tracking data structure |
+| `/vacuum` | Vacuum motor PWM via Arduino sketch |
+| `/brush` | Brush motor PWM via Arduino sketch |
+| `/log` | Rolling Python log buffer |
+| `/alerts` | Push notification system |
