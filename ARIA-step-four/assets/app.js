@@ -475,3 +475,134 @@ function cellColor(val) {
     if (val === CELL_FREE)     return '#b2dfdb';  // light teal
     return '#E8EEEE';                             // unknown — same as background
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// CAMERA TAB — live stream, snapshot, detect, upload
+// ═══════════════════════════════════════════════════════════════════════════
+
+(function () {
+    const camImg         = document.getElementById('camera-img');
+    const camPlaceholder = document.getElementById('camera-placeholder');
+    const camStatus      = document.getElementById('camera-status');
+    const snapshotBtn    = document.getElementById('snapshot-btn');
+    const detectBtn      = document.getElementById('detect-btn');
+    const uploadBtn      = document.getElementById('camera-upload-btn');
+    const detectUploadBtn= document.getElementById('camera-detect-upload-btn');
+    const downloadBtn    = document.getElementById('camera-download-btn');
+    const fileInput      = document.getElementById('camera-file-input');
+    const confidenceSlider = document.getElementById('cam-confidence');
+    const confidenceVal  = document.getElementById('cam-confidence-val');
+
+    let _streaming = false;
+    let _lastResultB64 = null;
+    let _uploadedB64   = null;
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+    function showImage(b64, mime) {
+        camImg.src = `data:${mime};base64,${b64}`;
+        camImg.style.display = 'block';
+        camPlaceholder.style.display = 'none';
+        downloadBtn.style.display = 'inline-block';
+    }
+
+    function setStatus(msg, color) {
+        camStatus.textContent = msg;
+        camStatus.style.color = color || '#aaa';
+    }
+
+    // ── confidence slider ─────────────────────────────────────────────────────
+    confidenceSlider.addEventListener('input', () => {
+        confidenceVal.textContent = confidenceSlider.value;
+    });
+
+    // ── live stream toggle (via stream-start / stream-stop tab switching) ─────
+    // Start stream when tab becomes active, stop when leaving
+    const origSwitchTab = window.switchTab;
+    window.switchTab = function (name) {
+        origSwitchTab(name);
+        if (name === 'camera') {
+            _streaming = true;
+            socket.emit('stream_start', {});
+            setStatus('Live stream active', '#4CAF50');
+        } else if (_streaming) {
+            _streaming = false;
+            socket.emit('stream_stop', {});
+        }
+    };
+
+    // ── receive live frames ───────────────────────────────────────────────────
+    socket.on('camera_frame', (data) => {
+        if (_streaming && data.frame) {
+            camImg.src = `data:image/jpeg;base64,${data.frame}`;
+            camImg.style.display = 'block';
+            camPlaceholder.style.display = 'none';
+        }
+    });
+
+    // ── snapshot ──────────────────────────────────────────────────────────────
+    snapshotBtn.addEventListener('click', () => {
+        setStatus('Capturing snapshot…', '#FFA726');
+        socket.emit('take_snapshot', {});
+    });
+
+    socket.on('snapshot_result', (data) => {
+        _lastResultB64 = data.image;
+        showImage(data.image, 'image/png');
+        setStatus('Snapshot captured ✅', '#4CAF50');
+    });
+
+    socket.on('snapshot_error', (data) => {
+        setStatus(`❌ ${data.error}`, '#ef5350');
+    });
+
+    // ── snapshot + detect ─────────────────────────────────────────────────────
+    detectBtn.addEventListener('click', () => {
+        setStatus('Capturing and detecting…', '#FFA726');
+        const confidence = parseInt(confidenceSlider.value) / 100;
+        socket.emit('camera_detect', { confidence });
+    });
+
+    // ── upload image ──────────────────────────────────────────────────────────
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            _uploadedB64 = ev.target.result.split(',')[1];
+            showImage(_uploadedB64, file.type);
+            setStatus('Image loaded — click Upload+Detect to analyse', '#90CAF9');
+        };
+        reader.readAsDataURL(file);
+        fileInput.value = '';
+    });
+
+    // ── upload + detect ───────────────────────────────────────────────────────
+    detectUploadBtn.addEventListener('click', () => {
+        if (!_uploadedB64) { setStatus('Upload an image first', '#ef5350'); return; }
+        setStatus('Running detection…', '#FFA726');
+        const confidence = parseInt(confidenceSlider.value) / 100;
+        socket.emit('camera_detect', { image: _uploadedB64, confidence });
+    });
+
+    // ── receive detection result ──────────────────────────────────────────────
+    socket.on('detection_result', (data) => {
+        if (!data.result_image) return;
+        _lastResultB64 = data.result_image;
+        showImage(data.result_image, 'image/png');
+        setStatus(`✅ Found ${data.detection_count} object(s)!`, '#4CAF50');
+    });
+
+    socket.on('detection_error', (data) => {
+        setStatus(`❌ ${data.error}`, '#ef5350');
+    });
+
+    // ── download result ───────────────────────────────────────────────────────
+    downloadBtn.addEventListener('click', () => {
+        if (!_lastResultB64) return;
+        const a = document.createElement('a');
+        a.href = `data:image/png;base64,${_lastResultB64}`;
+        a.download = `aria-capture-${Date.now()}.png`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    });
+})();

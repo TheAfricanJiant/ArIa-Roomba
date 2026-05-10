@@ -1,4 +1,4 @@
-﻿# SPDX-FileCopyrightText: Copyright (C) Arduino s.r.l.
+# SPDX-FileCopyrightText: Copyright (C) Arduino s.r.l.
 # SPDX-License-Identifier: MPL-2.0
 # ARIA-step-four: Merged robot brain + Telegram bot
 
@@ -11,7 +11,7 @@ from PIL import Image
 from io import BytesIO
 import threading, logging, json, os, time, math
 
-import serial_bridge, motor, telemetry, navigator
+import serial_bridge, motor, telemetry, navigator, camera
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -304,10 +304,26 @@ def resetpose_cmd(sender: Sender, message: Message):
     sender.reply("🔄 Pose reset to origin (0, 0, 0°)")
 
 def photo_cmd(sender: Sender, message: Message):
-    sender.reply("📷 Live camera not yet connected — attach a USB camera to enable /photo.")
+    sender.reply("📷 Capturing snapshot...")
+    raw = camera.capture_snapshot()
+    if raw is None:
+        sender.reply("❌ Camera not available. Attach a USB camera and ensure opencv-python-headless is installed."); return
+    if not sender.reply_photo(raw, "📸 ARIA snapshot"):
+        sender.reply("❌ Failed to send snapshot.")
+
+def detect_cmd(sender: Sender, message: Message):
+    sender.reply("🔍 Capturing and detecting...")
+    result = camera.detect_on_snapshot(obj_detection)
+    if "error" in result:
+        sender.reply(f"❌ {result['error']}"); return
+    import base64 as _b64
+    raw = _b64.b64decode(result["result_image"])
+    caption = f"✅ Found {result['detection_count']} object(s)!"
+    if not sender.reply_photo(raw, caption):
+        sender.reply("❌ Failed to send detection result.")
 
 def record_cmd(sender: Sender, message: Message):
-    sender.reply("🎥 Video recording not yet implemented.")
+    sender.reply("🎥 Video recording not yet implemented — needs ffmpeg integration.")
 
 def vacuum_cmd(sender: Sender, message: Message):
     sender.reply("🌀 Vacuum hardware not yet wired.")
@@ -436,6 +452,7 @@ bot.add_command("sensors",    sensors_cmd,   "Raw IMU + encoder data")
 bot.add_command("battery",    battery_cmd,   "Battery percentage")
 bot.add_command("coverage",   coverage_cmd,  "Grid coverage percent")
 bot.add_command("photo",      photo_cmd,     "Take a snapshot")
+bot.add_command("detect",     detect_cmd,    "Snapshot + object detection")
 bot.add_command("record",     record_cmd,    "Record video clip")
 bot.add_command("map",        map_cmd,       "Send occupancy grid image")
 bot.add_command("heatmap",    heatmap_cmd,   "Send dirt heatmap")
@@ -448,6 +465,46 @@ bot.on_text(sentiment)
 bot.on_photo(detect_objects)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# CAMERA WEB UI HANDLERS
+# ══════════════════════════════════════════════════════════════════════════════
+def ui_take_snapshot(client, data):
+    raw = camera.capture_snapshot()
+    if raw is None:
+        ui.send_message("snapshot_error", {"error": "Camera not available"}, client); return
+    import base64 as _b64
+    b64 = _b64.b64encode(raw).decode()
+    ui.send_message("snapshot_result", {"image": b64}, client)
+
+def ui_camera_detect(client, data):
+    # Called for both snapshot+detect and upload+detect
+    img_b64 = data.get("image")  # upload+detect passes image from browser
+    confidence = data.get("confidence", 0.5)
+    import base64 as _b64, io as _io
+    try:
+        if img_b64:
+            raw_bytes = _b64.b64decode(img_b64)
+            pil_img = Image.open(_io.BytesIO(raw_bytes))
+        else:
+            raw = camera.capture_snapshot()
+            if raw is None:
+                ui.send_message("detection_error", {"error": "Camera not available"}, client); return
+            pil_img = Image.open(_io.BytesIO(raw))
+        results = obj_detection.detect(pil_img, confidence=confidence)
+        annotated = obj_detection.draw_bounding_boxes(pil_img, results)
+        buf = _io.BytesIO(); annotated.save(buf, format="PNG"); buf.seek(0)
+        b64_result = _b64.b64encode(buf.getvalue()).decode()
+        count = len(results.get("detection", [])) if results else 0
+        ui.send_message("detection_result", {"success": True, "result_image": b64_result, "detection_count": count}, client)
+    except Exception as e:
+        ui.send_message("detection_error", {"error": str(e)}, client)
+
+def ui_stream_start(client, data):
+    camera.start_stream(ui)
+
+def ui_stream_stop(client, data):
+    camera.stop_stream()
+
+# ══════════════════════════════════════════════════════════════════════════════
 # REGISTER WEB UI HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
 ui.on_message("toggle_power",      toggle_power)
@@ -458,6 +515,10 @@ ui.on_message("set_path",          set_path)
 ui.on_message("clean_zone",        clean_zone_ui)
 ui.on_message("clear_goal",        clear_goal)
 ui.on_message("save_routine",      save_routine)
+ui.on_message("take_snapshot",     ui_take_snapshot)
+ui.on_message("camera_detect",     ui_camera_detect)
+ui.on_message("stream_start",      ui_stream_start)
+ui.on_message("stream_stop",       ui_stream_stop)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # START BACKGROUND THREADS & RUN

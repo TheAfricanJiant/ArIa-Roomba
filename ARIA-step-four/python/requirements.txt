@@ -11,3 +11,6 @@ pyserial>=3.5
 # Utilities
 matplotlib>=3.8.0
 Pillow>=10.0.0
+
+# Camera (USB webcam support for /photo, /detect, and web UI stream)
+opencv-python-headless>=4.8.0
