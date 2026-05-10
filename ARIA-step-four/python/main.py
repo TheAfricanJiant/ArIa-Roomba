@@ -308,35 +308,49 @@ def resetpose_cmd(sender: Sender, message: Message):
     if telemetry.ekf: telemetry.ekf.__init__(0.0, 0.0, 0.0)
     sender.reply("🔄 Pose reset to origin (0, 0, 0°)")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# BROWSER-SIDE FRAME RELAY
+# The browser already displays the live camera via iframe. We ask it to capture
+# a Canvas frame and send it back via Socket.IO. This bypasses all HTTP/MJPEG
+# endpoint guessing.
+# ─────────────────────────────────────────────────────────────────────────────
+_frame_store = {"data": None, "event": None}
+
+def _request_frame_from_browser(timeout=10):
+    """Ask connected browser to capture and return a JPEG frame.
+    Returns raw bytes or None."""
+    import base64 as _b64
+    evt = threading.Event()
+    _frame_store["data"] = None
+    _frame_store["event"] = evt
+    ui.send_message("request_frame", {})  # broadcast to all connected browsers
+    if evt.wait(timeout=timeout) and _frame_store["data"]:
+        try:
+            return _b64.b64decode(_frame_store["data"])
+        except Exception:
+            return None
+    return None
+
 def photo_cmd(sender: Sender, message: Message):
-    sender.reply("📷 Fetching snapshot… (may take a few seconds on first use)")
-    # Wait up to 10s for the frame grabber to get its first frame
-    raw = camera.get_snapshot_jpeg()
+    sender.reply("📷 Requesting snapshot from live camera…")
+    raw = _request_frame_from_browser(timeout=10)
     if raw is None:
-        for _ in range(10):
-            time.sleep(1)
-            raw = camera.get_snapshot_jpeg()
-            if raw: break
-    if raw is None:
-        # Last resort: report detections as text
         dets = camera.get_latest_detections()
         if dets:
-            lines = ["📷 No snapshot yet, but live detections are running:"]
+            lines = ["📷 No snapshot yet. Last detections:"]
             for label, entries in dets.items():
                 for e in entries:
                     conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
                     lines.append(f"  • {label} ({conf}%)")
             sender.reply("\n".join(lines))
         else:
-            sender.reply("❌ Stream not ready yet — the frame grabber is still probing the camera stream. Try again in 10 seconds.")
+            sender.reply("❌ No browser connected to the web UI, or camera not started. Open the web UI and go to the Camera tab first.")
         return
     if not sender.reply_photo(raw, "📸 ARIA live snapshot"):
-        sender.reply("❌ Snapshot captured but failed to send.")
+        sender.reply("❌ Snapshot captured but could not be sent.")
 
 def detect_cmd(sender: Sender, message: Message):
     detections = camera.get_latest_detections()
-    raw = camera.get_snapshot_jpeg()
-    # Always reply with something useful
     lines = ["🔍 *ARIA Detection Report:*"]
     if detections:
         for label, entries in detections.items():
@@ -344,34 +358,43 @@ def detect_cmd(sender: Sender, message: Message):
                 conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
                 lines.append(f"  • {label} ({conf}%)")
     else:
-        lines.append("  Nothing detected yet — point camera at objects.")
+        lines.append("  Nothing detected yet.")
     caption = "\n".join(lines)
+    raw = _request_frame_from_browser(timeout=8)
     if raw:
         if not sender.reply_photo(raw, caption):
             sender.reply(caption)
     else:
-        sender.reply(caption + "\n\n_Snapshot not ready yet — stream probing in progress._")
+        sender.reply(caption + "\n\n_Snapshot: open web UI Camera tab for live frame._")
 
 def record_cmd(sender: Sender, message: Message):
     args = message.text.strip().split()
     secs = int(args[1]) if len(args) > 1 and args[1].isdigit() else 5
     secs = max(1, min(15, secs))
-    # Wait for frame grabber to be ready
-    if camera.get_snapshot_jpeg() is None:
-        sender.reply("⏳ Waiting for camera stream to be ready…")
-        for _ in range(10):
-            time.sleep(1)
-            if camera.get_snapshot_jpeg(): break
-    if camera.get_snapshot_jpeg() is None:
-        sender.reply("❌ Camera stream not ready. Ensure USB camera is connected and wait ~10s after app start.")
-        return
-    sender.reply(f"🎥 Recording {secs}s GIF…")
+    sender.reply(f"🎥 Recording {secs}s… keep the web UI Camera tab open.")
     def _do_record():
-        gif = camera.record_gif(duration_sec=secs, fps=4)
-        if gif is None:
-            sender.reply("❌ Recording failed — stream dropped during capture.")
-        elif not sender.reply_photo(gif, f"🎥 {secs}s clip ({secs*4} frames)"):
-            sender.reply("❌ GIF captured but too large to send. Try /record 3 for a shorter clip.")
+        import io as _io, base64 as _b64
+        from PIL import Image as _Img
+        frames = []
+        interval = 0.25  # 4 fps
+        total = secs * 4
+        for _ in range(total):
+            raw = _request_frame_from_browser(timeout=3)
+            if raw:
+                try:
+                    img = _Img.open(_io.BytesIO(raw)).convert("P", palette=_Img.ADAPTIVE)
+                    frames.append(img)
+                except: pass
+            time.sleep(interval)
+        if not frames:
+            sender.reply("❌ No frames captured. Ensure web UI Camera tab is open.")
+            return
+        buf = _io.BytesIO()
+        frames[0].save(buf, format="GIF", save_all=True,
+                       append_images=frames[1:], duration=250, loop=0)
+        buf.seek(0)
+        if not sender.reply_photo(buf.getvalue(), f"🎥 {secs}s clip ({len(frames)} frames)"):
+            sender.reply("❌ GIF captured but too large. Try /record 3.")
     threading.Thread(target=_do_record, daemon=True).start()
 
 def vacuum_cmd(sender: Sender, message: Message):
@@ -570,6 +593,20 @@ def ui_record(client, data):
             ui.send_message("record_result", {"gif": _b64.b64encode(gif).decode(), "frames": duration * 4}, client)
     threading.Thread(target=_run, daemon=True).start()
 
+def frame_from_browser(client, data):
+    """Receives a Canvas-captured JPEG base64 from the browser for Telegram commands."""
+    if _frame_store.get("event") is not None:
+        _frame_store["data"] = data.get("image")
+        # Also store in camera module for future calls
+        if _frame_store["data"]:
+            import base64 as _b64
+            try:
+                camera._latest_frame_jpeg = _b64.b64decode(_frame_store["data"])
+            except Exception:
+                pass
+        _frame_store["event"].set()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # REGISTER WEB UI HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -584,7 +621,9 @@ ui.on_message("save_routine",      save_routine)
 ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
 ui.on_message("camera_record",     ui_record)
+ui.on_message("frame_from_browser", frame_from_browser)
 ui.on_message("override_th",       lambda sid, v: detection_stream.override_threshold(float(v)))
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # START BACKGROUND THREADS & RUN
