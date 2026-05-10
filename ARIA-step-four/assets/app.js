@@ -715,6 +715,19 @@ function cellColor(val) {
         setStatus('Python embed HTML: ' + data.html.substring(0, 200), '#90CAF9');
     });
 
+
+    // Show probe results from Python in the camera status bar
+    socket.on('probe_results', (data) => {
+        const rows = (data.results || []).map(r => {
+            if (r.error) return r.url.split('4912')[1] + '=ERR';
+            const flags = (r.jpeg ? 'JPEG!' : '') + (r.ws.length ? ' WS:'+r.ws[0] : '') + (r.fetch.length ? ' FETCH:'+r.fetch[0] : '') + (r.srcs.length ? ' SRC:'+r.srcs[0] : '');
+            return r.url.split('4912')[1] + '=' + r.ct.split(';')[0] + (flags ? '['+flags+']' : '');
+        }).join(' | ');
+        setStatus('PROBE: ' + rows, '#90CAF9');
+        console.log('PROBE RESULTS:', JSON.stringify(data.results, null, 2));
+        socket.emit('diag_result', { source: 'probe_display', summary: rows });
+    });
+
     socket.on('diag_result_ack', (data) => {
         setStatus('Diag received: ' + JSON.stringify(data).substring(0, 150), '#aaa');
     });

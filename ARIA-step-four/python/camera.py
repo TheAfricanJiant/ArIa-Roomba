@@ -1,125 +1,293 @@
-﻿# camera.py for ARIA-step-four
+# camera.py for ARIA-step-four
 #
-# The arduino:video_object_detection brick serves frames embedded as
-# data:image/jpeg;base64,... inside an <img> tag in the HTML at
-# http://localhost:4912/embed
-#
-# We poll that page, extract the base64, and keep the latest JPEG in memory.
+# Strategy (all stdlib, no external deps):
+#   1. HTTP probe: try every common path at port 4912 for raw JPEG/MJPEG
+#   2. HTML parse: if /embed is HTML, extract <img src>, fetch/WebSocket URLs
+#   3. WebSocket probe: try ws:// paths using raw socket + HTTP Upgrade
+#   4. Once frames are found via any method, store in _latest_frame_jpeg
+#   5. Expose get_snapshot_jpeg() / record_gif() for Telegram + Web UI
 
-import io
-import base64
-import logging
-import threading
-import time
-import urllib.request
-import re
+import io, base64, hashlib, logging, re, socket, struct, threading, time, urllib.request
 
 log = logging.getLogger(__name__)
 
-STREAM_URL   = "http://localhost:4912/embed"
-POLL_INTERVAL = 0.25   # seconds between frame fetches (~4 fps)
+PORT = 4912
+HTTP_PATHS = ["/stream", "/embed", "/", "/snapshot", "/video", "/mjpeg", "/frame", "/cam"]
+WS_PATHS   = ["/ws", "/stream", "/", "/video", "/cam"]
 
 _latest_frame_jpeg = None
 _latest_detections = {}
 _frame_lock = threading.Lock()
 _det_lock   = threading.Lock()
-_running    = False
+_active_url = None   # the URL that's actually giving us frames
+_ws_socket  = None   # active WebSocket socket, if any
 
 
-# ── Detection store ──────────────────────────────────────────────────────────
+# ── Detection store ───────────────────────────────────────────────────────────
 def on_detections(detections):
     global _latest_detections
     with _det_lock:
         _latest_detections = dict(detections)
-
 
 def get_latest_detections():
     with _det_lock:
         return dict(_latest_detections)
 
 
-# ── Extract JPEG from /embed HTML ────────────────────────────────────────────
-_IMG_RE = re.compile(
-    rb'<img[^>]+src=["\']data:image/jpeg;base64,([A-Za-z0-9+/=]+)["\']',
-    re.IGNORECASE
-)
+# ── Store a raw JPEG frame ────────────────────────────────────────────────────
+def _store_frame(data: bytes):
+    global _latest_frame_jpeg
+    soi = data.find(b"\xff\xd8")
+    eoi = data.rfind(b"\xff\xd9")
+    if soi >= 0 and eoi > soi:
+        with _frame_lock:
+            _latest_frame_jpeg = data[soi:eoi+2]
+        return True
+    return False
 
-def _fetch_frame():
-    """Fetch /embed and extract the base64 JPEG from the <img> tag."""
+
+# ── HTTP probe: check if a URL returns raw JPEG / MJPEG ──────────────────────
+def _http_probe(path):
+    url = f"http://localhost:{PORT}{path}"
     try:
-        with urllib.request.urlopen(STREAM_URL, timeout=5) as resp:
-            html = resp.read()
-        m = _IMG_RE.search(html)
-        if m:
-            return base64.b64decode(m.group(1))
+        resp = urllib.request.urlopen(url, timeout=4)
+        ct   = resp.headers.get("Content-Type", "")
+        first = resp.read(65536)   # read up to 64 KB
+        log.info(f"HTTP {url}: ct={ct!r} len={len(first)}")
+
+        # Case 1: raw JPEG
+        if b"\xff\xd8" in first:
+            if b"<html" not in first[:200].lower():
+                log.info(f"HTTP: Found JPEG bytes at {url}!")
+                _store_frame(first)
+                return ("jpeg", url, resp, first)
+
+        # Case 2: MJPEG multipart stream
+        if "multipart" in ct.lower():
+            log.info(f"HTTP: MJPEG multipart stream at {url}!")
+            return ("mjpeg", url, resp, first)
+
+        # Case 3: HTML — extract URLs for WebSocket/fetch probing
+        if b"<html" in first[:200].lower() or "html" in ct.lower():
+            ws_urls    = re.findall(rb'["\']?(ws[s]?://[^\'">\s]+)', first)
+            fetch_urls = re.findall(rb"fetch\(['\"]([^'\"]+)['\"]", first)
+            img_srcs   = re.findall(rb'src=["\']([^"\']{2,})["\']', first)
+            log.info(f"HTML {url}: ws={ws_urls} fetch={fetch_urls} srcs={img_srcs[:5]}")
+            return ("html", url, None, {"ws": ws_urls, "fetch": fetch_urls, "srcs": img_srcs})
+
+        resp.close()
     except Exception as e:
-        log.debug(f"Camera fetch error: {e}")
+        log.debug(f"HTTP {url}: {e}")
     return None
 
 
-# ── Polling loop ─────────────────────────────────────────────────────────────
-def _poll_loop():
-    global _latest_frame_jpeg, _running
-    _running = True
-    log.info("Camera poller started — fetching from %s", STREAM_URL)
-    consecutive_fails = 0
-    while _running:
-        frame = _fetch_frame()
-        if frame:
-            with _frame_lock:
-                _latest_frame_jpeg = frame
-            consecutive_fails = 0
+# ── WebSocket probe: try ws:// using raw socket + HTTP Upgrade ────────────────
+def _ws_probe(path):
+    url = f"ws://localhost:{PORT}{path}"
+    try:
+        # Build a valid WebSocket handshake key
+        raw_key = base64.b64encode(b"ARIACameraProbe1").decode()
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(4)
+        s.connect(("127.0.0.1", PORT))
+        handshake = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: localhost:{PORT}\r\n"
+            f"Upgrade: websocket\r\n"
+            f"Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {raw_key}\r\n"
+            f"Sec-WebSocket-Version: 13\r\n"
+            f"\r\n"
+        )
+        s.sendall(handshake.encode())
+        response = s.recv(4096).decode(errors="replace")
+        if "101" in response:
+            log.info(f"WS: Connected at {url}!")
+            return s   # caller must read frames
         else:
-            consecutive_fails += 1
-            if consecutive_fails == 1:
-                log.warning("Camera: no frame yet — waiting for brick to start...")
-            elif consecutive_fails % 20 == 0:
-                log.warning("Camera: still no frame after %d attempts", consecutive_fails)
-        time.sleep(POLL_INTERVAL)
+            log.debug(f"WS {url}: no 101, got: {response[:200]}")
+            s.close()
+    except Exception as e:
+        log.debug(f"WS {url}: {e}")
+    return None
 
 
+# ── Read one WebSocket frame (text or binary) ─────────────────────────────────
+def _ws_read_frame(s):
+    """Read one WebSocket data frame. Returns (opcode, payload_bytes)."""
+    try:
+        header = _ws_recv_exact(s, 2)
+        if not header: return None, None
+        opcode  = header[0] & 0x0F
+        masked  = (header[1] & 0x80) != 0
+        length  = header[1] & 0x7F
+        if length == 126:
+            ext = _ws_recv_exact(s, 2)
+            length = struct.unpack(">H", ext)[0]
+        elif length == 127:
+            ext = _ws_recv_exact(s, 8)
+            length = struct.unpack(">Q", ext)[0]
+        mask = _ws_recv_exact(s, 4) if masked else b"\x00\x00\x00\x00"
+        payload = _ws_recv_exact(s, length)
+        if masked:
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        return opcode, payload
+    except Exception as e:
+        log.debug(f"WS read error: {e}")
+        return None, None
+
+def _ws_recv_exact(s, n):
+    buf = b""
+    while len(buf) < n:
+        chunk = s.recv(n - len(buf))
+        if not chunk: return None
+        buf += chunk
+    return buf
+
+
+# ── MJPEG stream reader ───────────────────────────────────────────────────────
+def _read_mjpeg(resp, seed_data=b""):
+    """Read JPEG frames from an open MJPEG response. Yields jpeg bytes."""
+    buf = seed_data
+    while True:
+        try:
+            chunk = resp.read(8192)
+            if not chunk: break
+            buf += chunk
+        except Exception:
+            break
+        while True:
+            soi = buf.find(b"\xff\xd8")
+            if soi < 0:
+                buf = buf[-1024:] if len(buf) > 1024 else b""
+                break
+            eoi = buf.find(b"\xff\xd9", soi + 2)
+            if eoi < 0:
+                if len(buf) > 2 * 1024 * 1024:  # 2 MB safety cap
+                    buf = buf[soi:]
+                break
+            yield buf[soi:eoi+2]
+            buf = buf[eoi+2:]
+
+
+# ── Main discovery + streaming loop ──────────────────────────────────────────
+def _main_loop():
+    global _active_url, _ws_socket
+    log.info("Camera: starting discovery on port %d", PORT)
+    found_html_ws = []
+
+    # Phase 1: HTTP probe all paths
+    for path in HTTP_PATHS:
+        kind, url, resp, extra = _http_probe(path) or (None, None, None, None)
+        if kind == "jpeg":
+            # Single JPEG snapshot — poll this path
+            _active_url = url
+            log.info(f"Camera: polling JPEG snapshots from {url}")
+            _http_poll_loop(url)
+            return
+        elif kind == "mjpeg":
+            _active_url = url
+            log.info(f"Camera: reading MJPEG stream from {url}")
+            for frame in _read_mjpeg(resp, extra):
+                _store_frame(frame)
+            return   # stream ended
+        elif kind == "html" and extra:
+            for ws_url in extra.get("ws", []):
+                found_html_ws.append(ws_url.decode(errors="replace"))
+            for src in extra.get("srcs", []):
+                src_s = src.decode(errors="replace")
+                if src_s.startswith("/") or src_s.startswith("http"):
+                    found_html_ws.append(src_s)
+
+    # Phase 2: WebSocket probe
+    ws_candidates = WS_PATHS[:]
+    for ws_url in found_html_ws:
+        path_part = ws_url.split(":")[-1] if ":" in ws_url else ws_url
+        path_part = "/" + path_part.lstrip("/")
+        if path_part not in ws_candidates:
+            ws_candidates.insert(0, path_part)
+
+    for path in ws_candidates:
+        s = _ws_probe(path)
+        if s:
+            _active_url = f"ws://localhost:{PORT}{path}"
+            _ws_socket = s
+            log.info(f"Camera: reading WebSocket frames from {_active_url}")
+            _ws_loop(s)
+            return
+
+    log.warning("Camera: no frame source found at port %d. Retrying in 15s.", PORT)
+    time.sleep(15)
+    _main_loop()   # retry
+
+
+def _http_poll_loop(url):
+    """Poll a single JPEG URL at 4fps."""
+    while True:
+        try:
+            with urllib.request.urlopen(url, timeout=4) as resp:
+                data = resp.read()
+            _store_frame(data)
+        except Exception as e:
+            log.debug(f"Poll {url}: {e}")
+        time.sleep(0.25)
+
+
+def _ws_loop(s):
+    """Receive WebSocket frames and store JPEG data."""
+    while True:
+        opcode, payload = _ws_read_frame(s)
+        if opcode is None:
+            log.warning("Camera: WebSocket closed, reconnecting...")
+            s.close()
+            time.sleep(2)
+            _main_loop()
+            return
+        if opcode == 0x2:  # binary
+            if payload and b"\xff\xd8" in payload:
+                _store_frame(payload)
+        elif opcode == 0x1:  # text — might be base64
+            if payload:
+                try:
+                    data = base64.b64decode(payload)
+                    _store_frame(data)
+                except Exception:
+                    pass
+        elif opcode == 0x8:  # close
+            log.warning("Camera: WS close frame received")
+            s.close()
+            time.sleep(2)
+            _main_loop()
+            return
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 def start_frame_grabber():
-    """Start the background polling thread."""
-    t = threading.Thread(target=_poll_loop, daemon=True)
+    t = threading.Thread(target=_main_loop, daemon=True)
     t.start()
 
-
 def get_snapshot_jpeg():
-    """Return the latest captured JPEG bytes, or None if not ready."""
     with _frame_lock:
         return _latest_frame_jpeg
 
-
-# ── GIF recording ────────────────────────────────────────────────────────────
 def record_gif(duration_sec=5, fps=4):
-    """Capture frames for duration_sec seconds and return animated GIF bytes."""
     from PIL import Image as _Img
-    frames   = []
-    interval = 1.0 / fps
-    total    = duration_sec * fps
-    log.info("Recording GIF: %ds @ %dfps (%d frames)", duration_sec, fps, total)
-    for _ in range(total):
-        frame = get_snapshot_jpeg()
-        if frame:
+    frames, interval = [], 1.0 / fps
+    for _ in range(duration_sec * fps):
+        f = get_snapshot_jpeg()
+        if f:
             try:
-                img = _Img.open(io.BytesIO(frame)).convert("P", palette=_Img.ADAPTIVE)
-                frames.append(img)
-            except Exception as e:
-                log.warning("record_gif frame error: %s", e)
+                frames.append(_Img.open(io.BytesIO(f)).convert("P", palette=_Img.ADAPTIVE))
+            except Exception:
+                pass
         time.sleep(interval)
     if not frames:
-        log.warning("record_gif: no frames captured")
         return None
     buf = io.BytesIO()
-    frames[0].save(
-        buf, format="GIF", save_all=True,
-        append_images=frames[1:], duration=int(1000 / fps), loop=0
-    )
+    frames[0].save(buf, format="GIF", save_all=True,
+                   append_images=frames[1:], duration=int(1000/fps), loop=0)
     buf.seek(0)
-    log.info("record_gif: encoded %d frames, %d bytes", len(frames), buf.getbuffer().nbytes)
     return buf.getvalue()
 
-
-# ── Compat stubs ─────────────────────────────────────────────────────────────
 def register_stream(stream):
-    pass   # no-op — kept for API compatibility with main.py
+    pass  # compat stub

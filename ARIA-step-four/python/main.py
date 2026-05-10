@@ -331,73 +331,89 @@ def _request_frame_from_browser(timeout=10):
             return None
     return None
 
+def _get_frame(timeout=10):
+    """Get a JPEG frame: try camera module first, then ask browser.
+    Returns raw bytes or None."""
+    # Fast path: camera module already has a frame
+    raw = camera.get_snapshot_jpeg()
+    if raw:
+        return raw
+    # Slow path: ask the open browser to relay one
+    raw = _request_frame_from_browser(timeout=timeout)
+    if raw:
+        # Cache it in camera module for next time
+        camera._latest_frame_jpeg = raw
+    return raw
+
 def photo_cmd(sender: Sender, message: Message):
-    sender.reply("📷 Requesting snapshot… (keep Camera tab open in the web UI)")
-    raw = _request_frame_from_browser(timeout=10)
+    sender.reply("\ud83d\udcf7 Capturing snapshot\u2026")
+    raw = _get_frame(timeout=10)
     if raw is None:
         dets = camera.get_latest_detections()
         if dets:
-            lines = ["📷 No browser frame available. Last detections:"]
+            lines = ["\ud83d\udcf7 No frame yet. Last detections:"]
             for label, entries in dets.items():
                 if isinstance(entries, list):
                     for e in entries:
                         conf = round(e.get("confidence", 0) * 100, 1) if isinstance(e, dict) else round(float(e) * 100, 1)
-                        lines.append(f"  • {label} ({conf}%)")
+                        lines.append(f"  \u2022 {label} ({conf}%)")
                 else:
-                    lines.append(f"  • {label} ({round(float(entries)*100,1)}%)")
+                    lines.append(f"  \u2022 {label} ({round(float(entries)*100,1)}%)")
             sender.reply("\n".join(lines))
         else:
-            sender.reply("❌ No browser connected. Open the web UI and click the Camera tab, then retry.")
+            sender.reply("\u274c Camera not ready. Ensure USB camera is connected and the Camera tab is open in the web UI.")
         return
-    if not sender.reply_photo(raw, "📸 ARIA live snapshot"):
-        sender.reply("❌ Snapshot captured but could not be sent.")
+    if not sender.reply_photo(raw, "\ud83d\udcf8 ARIA live snapshot"):
+        sender.reply("\u274c Snapshot captured but could not be sent.")
 
 def detect_cmd(sender: Sender, message: Message):
     detections = camera.get_latest_detections()
-    lines = ["🔍 *ARIA Detection Report:*"]
+    lines = ["\ud83d\udd0d *ARIA Detection Report:*"]
     if detections:
         for label, entries in detections.items():
-            for e in entries:
-                conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
-                lines.append(f"  • {label} ({conf}%)")
+            if isinstance(entries, list):
+                for e in entries:
+                    conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
+                    lines.append(f"  \u2022 {label} ({conf}%)")
+            else:
+                lines.append(f"  \u2022 {label} ({round(float(entries)*100,1)}%)")
     else:
         lines.append("  Nothing detected yet.")
     caption = "\n".join(lines)
-    raw = _request_frame_from_browser(timeout=8)
+    raw = _get_frame(timeout=8)
     if raw:
         if not sender.reply_photo(raw, caption):
             sender.reply(caption)
     else:
-        sender.reply(caption + "\n\n_Snapshot: open web UI Camera tab for live frame._")
+        sender.reply(caption)
 
 def record_cmd(sender: Sender, message: Message):
     args = message.text.strip().split()
     secs = int(args[1]) if len(args) > 1 and args[1].isdigit() else 5
     secs = max(1, min(15, secs))
-    sender.reply(f"🎥 Recording {secs}s… keep the web UI Camera tab open.")
+    sender.reply(f"\ud83c\udfa5 Recording {secs}s GIF\u2026")
     def _do_record():
-        import io as _io, base64 as _b64
+        import io as _io
         from PIL import Image as _Img
         frames = []
         interval = 0.25  # 4 fps
         total = secs * 4
         for _ in range(total):
-            raw = _request_frame_from_browser(timeout=3)
+            raw = _get_frame(timeout=3)
             if raw:
                 try:
-                    img = _Img.open(_io.BytesIO(raw)).convert("P", palette=_Img.ADAPTIVE)
-                    frames.append(img)
+                    frames.append(_Img.open(_io.BytesIO(raw)).convert("P", palette=_Img.ADAPTIVE))
                 except: pass
             time.sleep(interval)
         if not frames:
-            sender.reply("❌ No frames captured. Ensure web UI Camera tab is open.")
+            sender.reply("\u274c No frames captured. Ensure camera is connected and web UI Camera tab is open.")
             return
         buf = _io.BytesIO()
         frames[0].save(buf, format="GIF", save_all=True,
                        append_images=frames[1:], duration=250, loop=0)
         buf.seek(0)
-        if not sender.reply_photo(buf.getvalue(), f"🎥 {secs}s clip ({len(frames)} frames)"):
-            sender.reply("❌ GIF captured but too large. Try /record 3.")
+        if not sender.reply_photo(buf.getvalue(), f"\ud83c\udfa5 {secs}s clip ({len(frames)} frames)"):
+            sender.reply("\u274c GIF too large. Try /record 3.")
     threading.Thread(target=_do_record, daemon=True).start()
 
 def vacuum_cmd(sender: Sender, message: Message):
@@ -665,7 +681,62 @@ ui.on_message("override_th",       lambda sid, v: detection_stream.override_thre
 # ══════════════════════════════════════════════════════════════════════════════
 # START BACKGROUND THREADS & RUN
 # ══════════════════════════════════════════════════════════════════════════════
+_probe_results = []
+
+def _probe_camera_stream():
+    """Probe port 4912: try all paths, detect JPEG bytes, log HTML src/ws URLs.
+    Results are sent to the browser via Socket.IO so user doesn't need server logs."""
+    import urllib.request, logging, re
+    log = logging.getLogger("camera_probe")
+    time.sleep(6)  # wait for brick to fully start
+    paths = ["/stream", "/embed", "/", "/snapshot", "/video", "/mjpeg", "/frame", "/cam"]
+    for path in paths:
+        url = f"http://localhost:4912{path}"
+        try:
+            resp = urllib.request.urlopen(url, timeout=5)
+            ct    = resp.headers.get("Content-Type", "?")
+            first = resp.read(4096)
+            has_jpeg = b"\xff\xd8" in first
+            ws_urls   = re.findall(rb'ws[s]?://[^\'">\s]+', first)
+            fetch_urls= re.findall(rb"fetch\(['\"]([^'\"]+)['\"]", first)
+            img_srcs  = re.findall(rb'src=["\']([^"\']{4,})["\']', first)
+            result = {
+                "url": url, "ct": ct, "jpeg": has_jpeg,
+                "ws":    [u.decode(errors="replace") for u in ws_urls],
+                "fetch": [u.decode(errors="replace") for u in fetch_urls],
+                "srcs":  [u.decode(errors="replace") for u in img_srcs[:5]],
+                "preview": first[:300].decode(errors="replace")
+            }
+            _probe_results.append(result)
+            log.info(f"PROBE {url}: ct={ct} jpeg={has_jpeg} ws={ws_urls} srcs={img_srcs[:3]}")
+            resp.close()
+            # If raw JPEG found, store it immediately
+            if has_jpeg and b"<html" not in first.lower():
+                log.info(f"PROBE: Raw JPEG at {url}! Storing frame.")
+                soi = first.index(b"\xff\xd8")
+                eoi = first.rfind(b"\xff\xd9")
+                if eoi > soi:
+                    camera._latest_frame_jpeg = first[soi:eoi+2]
+        except Exception as e:
+            log.info(f"PROBE {url}: {e}")
+            _probe_results.append({"url": url, "error": str(e)})
+    try:
+        ui.send_message("probe_results", {"results": _probe_results})
+    except Exception:
+        pass
+    log.info("PROBE done.")
+
+def _on_client_connect(sid):
+    """When a browser connects, send any existing probe results."""
+    if _probe_results:
+        ui.send_message("probe_results", {"results": _probe_results})
+
+ui.on_connect(_on_client_connect)
+
 threading.Thread(target=telemetry.telemetry_loop, args=(ui,), daemon=True).start()
 threading.Thread(target=navigation_loop, daemon=True).start()
-camera.start_frame_grabber()   # start pulling JPEG frames from the brick stream
+camera.start_frame_grabber()  # auto-discovers MJPEG/WebSocket at port 4912
+threading.Thread(target=_probe_camera_stream, daemon=True).start()
 App.run()
+
+
