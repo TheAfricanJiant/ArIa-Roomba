@@ -676,8 +676,16 @@ ui.on_message("frame_from_browser", frame_from_browser)
 def diag_result(client, data):
     import logging, re
     log = logging.getLogger("camera_diag")
-    log.info(f"BROWSER_DIAG: {str(data)[:500]}")
-    html = data.get("html", "")
+    blob = str(data) if data is not None else ""
+    if any(
+        k in blob.lower()
+        for k in ("metamask", "chainchanged", "metamask-provider", "walletconnect", "ethereum")
+    ):
+        return
+    log.info(f"BROWSER_DIAG: {blob[:500]}")
+    if not isinstance(data, dict):
+        return
+    html = data.get("html", "") or ""
     if html:
         ws_urls    = re.findall(r'ws[s]?://[^\'">\s]+', html)
         fetch_urls = re.findall(r"fetch\(['\"]([^'\"]+)['\"]", html)

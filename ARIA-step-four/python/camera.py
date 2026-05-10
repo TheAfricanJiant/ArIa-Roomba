@@ -7,7 +7,7 @@
 #   4. Once frames are found via any method, store in _latest_frame_jpeg
 #   5. Expose get_snapshot_jpeg() / record_gif() for Telegram + Web UI
 
-import io, base64, hashlib, logging, re, socket, struct, threading, time, urllib.request
+import glob, io, base64, hashlib, logging, os, re, socket, struct, threading, time, urllib.request
 
 log = logging.getLogger(__name__)
 
@@ -290,39 +290,78 @@ def start_frame_grabber():
     t = threading.Thread(target=_main_loop, daemon=True)
     t.start()
 
-def grab_jpeg_v4l2(device_index=0):
-    """Direct USB webcam grab when VideoObjectDetection Brick HTTP (:4912) is down.
-    Uses OpenCV; may fail if the Brick already has exclusive camera access."""
+def _v4l_candidates():
+    """Paths and indices to try for a USB UVC device on Linux."""
+    out = []
+    envp = os.environ.get("ARIA_CAMERA_DEVICE", "").strip()
+    if envp:
+        out.append(envp)
+    try:
+        devs = sorted(glob.glob("/dev/video*"))
+        out.extend(d for d in devs if os.path.exists(d))
+    except Exception:
+        pass
+    out.extend(range(0, 8))
+    seen, uniq = set(), []
+    for d in out:
+        key = d
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(d)
+    return uniq
+
+
+def grab_jpeg_v4l2():
+    """Direct USB webcam grab when VideoObjectDetection Brick HTTP (:4912) is unavailable.
+    Tries env ARIA_CAMERA_DEVICE, each /dev/video*, then indices 0..7 with V4L2 then CAP_ANY."""
+    os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")
     try:
         import cv2  # noqa: PLC0415
+        try:
+            cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_SILENT)
+        except Exception:
+            pass
     except ImportError:
         log.debug("OpenCV not installed — no V4L2 fallback.")
         return None
-    cap = None
-    try:
-        cap = cv2.VideoCapture(device_index, getattr(cv2, "CAP_V4L2", 0))
-        if not cap or not cap.isOpened():
-            if cap:
+
+    apis = (getattr(cv2, "CAP_V4L2", 200), getattr(cv2, "CAP_ANY", 0))
+
+    for spec in _v4l_candidates():
+        cap = None
+        try:
+            for api in apis:
+                cap = cv2.VideoCapture(spec, api)
+                if cap.isOpened():
+                    break
                 cap.release()
-            cap = cv2.VideoCapture(device_index)
-        if not cap.isOpened():
-            return None
-        ok, frame = cap.read()
-        if not ok or frame is None:
-            return None
-        ok, enc = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
-        if not ok:
-            return None
-        return bytes(enc)
-    except Exception as e:
-        log.info("V4L2/OpenCV snapshot: %s", e)
-        return None
-    finally:
-        if cap is not None:
-            try:
-                cap.release()
-            except Exception:
-                pass
+                cap = None
+            if cap is None or not cap.isOpened():
+                continue
+            ok, frm = cap.read()
+            if ok and frm is not None and getattr(frm, "size", 0) > 0:
+                log.info("OpenCV grabbed JPEG via %s", spec)
+                enc_ok, enc = cv2.imencode(".jpg", frm, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+                if enc_ok:
+                    return bytes(enc)
+        except Exception as e:
+            log.debug("OpenCV try %s: %s", spec, e)
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+
+    devs = sorted(glob.glob("/dev/video*"))
+    log.warning(
+        "OpenCV/V4L2: cannot read USB/UVC camera. Found: %s. "
+        ":4912 must be reachable for the Brick, or unset OpenCV grab and fix hub/Network Mode. "
+        "Try ARIA_CAMERA_DEVICE=/dev/video1 if multiple nodes exist.",
+        ", ".join(devs) if devs else "(no /dev/video* — wiring, driver, or exclusive Brick lock)",
+    )
+    return None
 
 def get_snapshot_jpeg():
     with _frame_lock:
