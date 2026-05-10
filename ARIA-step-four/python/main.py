@@ -332,19 +332,22 @@ def _request_frame_from_browser(timeout=10):
     return None
 
 def photo_cmd(sender: Sender, message: Message):
-    sender.reply("📷 Requesting snapshot from live camera…")
+    sender.reply("📷 Requesting snapshot… (keep Camera tab open in the web UI)")
     raw = _request_frame_from_browser(timeout=10)
     if raw is None:
         dets = camera.get_latest_detections()
         if dets:
-            lines = ["📷 No snapshot yet. Last detections:"]
+            lines = ["📷 No browser frame available. Last detections:"]
             for label, entries in dets.items():
-                for e in entries:
-                    conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
-                    lines.append(f"  • {label} ({conf}%)")
+                if isinstance(entries, list):
+                    for e in entries:
+                        conf = round(e.get("confidence", 0) * 100, 1) if isinstance(e, dict) else round(float(e) * 100, 1)
+                        lines.append(f"  • {label} ({conf}%)")
+                else:
+                    lines.append(f"  • {label} ({round(float(entries)*100,1)}%)")
             sender.reply("\n".join(lines))
         else:
-            sender.reply("❌ No browser connected to the web UI, or camera not started. Open the web UI and go to the Camera tab first.")
+            sender.reply("❌ No browser connected. Open the web UI and click the Camera tab, then retry.")
         return
     if not sender.reply_photo(raw, "📸 ARIA live snapshot"):
         sender.reply("❌ Snapshot captured but could not be sent.")
@@ -582,15 +585,30 @@ def on_live_detection(detections: dict):
 detection_stream.on_detect_all(on_live_detection)
 
 def ui_record(client, data):
+    """Web UI Record button — uses browser-side frame relay."""
     duration = int(data.get("duration", 5))
     duration = max(1, min(15, duration))
     def _run():
-        import base64 as _b64
-        gif = camera.record_gif(duration_sec=duration, fps=4)
-        if gif is None:
-            ui.send_message("record_error", {"error": "No camera frames — check USB camera connection"}, client)
-        else:
-            ui.send_message("record_result", {"gif": _b64.b64encode(gif).decode(), "frames": duration * 4}, client)
+        import io as _io, base64 as _b64
+        from PIL import Image as _Img
+        frames = []
+        total = duration * 4   # 4 fps
+        for _ in range(total):
+            raw = _request_frame_from_browser(timeout=3)
+            if raw:
+                try:
+                    img = _Img.open(_io.BytesIO(raw)).convert("P", palette=_Img.ADAPTIVE)
+                    frames.append(img)
+                except: pass
+            time.sleep(0.25)
+        if not frames:
+            ui.send_message("record_error", {"error": "No frames captured — keep Camera tab open"}, client)
+            return
+        buf = _io.BytesIO()
+        frames[0].save(buf, format="GIF", save_all=True,
+                       append_images=frames[1:], duration=250, loop=0)
+        buf.seek(0)
+        ui.send_message("record_result", {"gif": _b64.b64encode(buf.getvalue()).decode(), "frames": len(frames)}, client)
     threading.Thread(target=_run, daemon=True).start()
 
 def frame_from_browser(client, data):
