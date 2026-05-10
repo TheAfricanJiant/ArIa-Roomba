@@ -1,5 +1,5 @@
 import logging
-import serial_bridge
+from arduino.app_utils import Bridge
 
 log = logging.getLogger(__name__)
 
@@ -8,9 +8,8 @@ def set_vacuum(pwm: int) -> int:
     """
     Set vacuum motor PWM (0-255).
 
-    Protocol to Arduino (over socat bridge):
-      V,<pwm>\n
-    The Arduino sketch must implement this command and drive the L298N pins.
+    This calls the UNO Q sketch via RouterBridge:
+      Bridge.call("set_vacuum_pwm", pwm)
     """
     try:
         pwm_i = int(pwm)
@@ -18,11 +17,13 @@ def set_vacuum(pwm: int) -> int:
         pwm_i = 0
     pwm_i = max(0, min(255, pwm_i))
 
-    if serial_bridge.is_connected():
-        serial_bridge.send(f"V,{pwm_i}\n")
-        log.debug("Vacuum cmd sent: pwm=%d", pwm_i)
-    else:
-        log.debug("Dummy vacuum cmd: pwm=%d", pwm_i)
+    try:
+        Bridge.call("set_vacuum_pwm", pwm_i)
+        log.debug("Vacuum RPC sent: pwm=%d", pwm_i)
+    except Exception as e:
+        # If Bridge isn't available (e.g. running without the UNO Q sketch),
+        # we keep the app alive and just log.
+        log.warning("Vacuum RPC failed: %s", e)
 
     return pwm_i
 
