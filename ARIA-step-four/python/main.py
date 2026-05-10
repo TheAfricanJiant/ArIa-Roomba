@@ -309,50 +309,69 @@ def resetpose_cmd(sender: Sender, message: Message):
     sender.reply("🔄 Pose reset to origin (0, 0, 0°)")
 
 def photo_cmd(sender: Sender, message: Message):
-    sender.reply("📷 Capturing snapshot from live feed...")
+    sender.reply("📷 Fetching snapshot… (may take a few seconds on first use)")
+    # Wait up to 10s for the frame grabber to get its first frame
     raw = camera.get_snapshot_jpeg()
     if raw is None:
-        sender.reply("❌ Could not capture frame. Ensure a USB camera is connected and the app is running."); return
+        for _ in range(10):
+            time.sleep(1)
+            raw = camera.get_snapshot_jpeg()
+            if raw: break
+    if raw is None:
+        # Last resort: report detections as text
+        dets = camera.get_latest_detections()
+        if dets:
+            lines = ["📷 No snapshot yet, but live detections are running:"]
+            for label, entries in dets.items():
+                for e in entries:
+                    conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
+                    lines.append(f"  • {label} ({conf}%)")
+            sender.reply("\n".join(lines))
+        else:
+            sender.reply("❌ Stream not ready yet — the frame grabber is still probing the camera stream. Try again in 10 seconds.")
+        return
     if not sender.reply_photo(raw, "📸 ARIA live snapshot"):
-        sender.reply("❌ Failed to send snapshot.")
+        sender.reply("❌ Snapshot captured but failed to send.")
 
 def detect_cmd(sender: Sender, message: Message):
     detections = camera.get_latest_detections()
     raw = camera.get_snapshot_jpeg()
-    if not detections and raw is None:
-        sender.reply("🔍 No detections yet — make sure a USB camera is connected."); return
+    # Always reply with something useful
+    lines = ["🔍 *ARIA Detection Report:*"]
+    if detections:
+        for label, entries in detections.items():
+            for e in entries:
+                conf = round(e.get("confidence",0)*100,1) if isinstance(e,dict) else round(float(e)*100,1)
+                lines.append(f"  • {label} ({conf}%)")
+    else:
+        lines.append("  Nothing detected yet — point camera at objects.")
+    caption = "\n".join(lines)
     if raw:
-        lines = ["🔍 *Live Detections:*"]
-        if detections:
-            for label, entries in detections.items():
-                for e in entries:
-                    conf = round(e.get("confidence", 0) * 100, 1) if isinstance(e, dict) else round(float(e) * 100, 1)
-                    lines.append(f"  • {label} ({conf}%)")
-        else:
-            lines.append("  No objects detected in last frame.")
-        caption = "\n".join(lines)
         if not sender.reply_photo(raw, caption):
             sender.reply(caption)
     else:
-        lines = ["🔍 *Last Detections:*"]
-        for label, entries in detections.items():
-            for e in entries:
-                conf = round(e.get("confidence", 0) * 100, 1) if isinstance(e, dict) else round(float(e) * 100, 1)
-                lines.append(f"  • {label} ({conf}%)")
-        sender.reply("\n".join(lines))
+        sender.reply(caption + "\n\n_Snapshot not ready yet — stream probing in progress._")
 
 def record_cmd(sender: Sender, message: Message):
     args = message.text.strip().split()
     secs = int(args[1]) if len(args) > 1 and args[1].isdigit() else 5
-    secs = max(1, min(15, secs))  # cap at 15 seconds
-    sender.reply(f"🎥 Recording {secs}s GIF from live camera…")
+    secs = max(1, min(15, secs))
+    # Wait for frame grabber to be ready
+    if camera.get_snapshot_jpeg() is None:
+        sender.reply("⏳ Waiting for camera stream to be ready…")
+        for _ in range(10):
+            time.sleep(1)
+            if camera.get_snapshot_jpeg(): break
+    if camera.get_snapshot_jpeg() is None:
+        sender.reply("❌ Camera stream not ready. Ensure USB camera is connected and wait ~10s after app start.")
+        return
+    sender.reply(f"🎥 Recording {secs}s GIF…")
     def _do_record():
         gif = camera.record_gif(duration_sec=secs, fps=4)
         if gif is None:
-            sender.reply("❌ Recording failed — no camera frames available. Ensure USB camera is connected.")
-        else:
-            if not sender.reply_photo(gif, f"🎥 {secs}s recording ({secs*4} frames)"):
-                sender.reply("❌ GIF recorded but could not be sent via Telegram (file may be too large).")
+            sender.reply("❌ Recording failed — stream dropped during capture.")
+        elif not sender.reply_photo(gif, f"🎥 {secs}s clip ({secs*4} frames)"):
+            sender.reply("❌ GIF captured but too large to send. Try /record 3 for a shorter clip.")
     threading.Thread(target=_do_record, daemon=True).start()
 
 def vacuum_cmd(sender: Sender, message: Message):
