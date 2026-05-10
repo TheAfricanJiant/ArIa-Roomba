@@ -646,6 +646,78 @@ function cellColor(val) {
         setStatus('GIF recorded (' + data.frames + ' frames)', '#4CAF50');
     });
     socket.on('record_error', (data) => { setStatus(data.error, '#ef5350'); });
+
+    // ===== DIAGNOSTICS =====
+    // 1. Listen for ANY postMessage from the iframe (brick may post frames this way)
+    window.addEventListener('message', (event) => {
+        const src = event.origin || 'unknown';
+        if (src.includes('4912') || src.includes('localhost') || src.includes(window.location.hostname)) {
+            const preview = typeof event.data === 'string'
+                ? event.data.substring(0, 200)
+                : (event.data instanceof ArrayBuffer ? 'ArrayBuffer:' + event.data.byteLength + 'bytes' : JSON.stringify(event.data).substring(0, 200));
+            setStatus('postMessage from ' + src + ': ' + preview, '#FFA726');
+            socket.emit('diag_result', { source: 'postMessage', origin: src, preview: preview });
+            // If it looks like a JPEG base64, use it!
+            if (typeof event.data === 'string' && event.data.startsWith('/9j/')) {
+                socket.emit('frame_from_browser', { image: event.data });
+            }
+        }
+    });
+
+    // 2. Diag button: probe common frame endpoints and report
+    const diagBtn = document.getElementById('camera-diag-btn');
+    if (diagBtn) {
+        diagBtn.addEventListener('click', () => {
+            setStatus('Running camera diagnostics...', '#FFA726');
+            const host = window.location.hostname;
+            const paths = ['/stream', '/', '/snapshot', '/frame', '/video', '/embed'];
+            const results = [];
+            const tryNext = (i) => {
+                if (i >= paths.length) {
+                    const summary = results.join(' | ');
+                    setStatus('Diag: ' + summary, '#90CAF9');
+                    socket.emit('diag_result', { source: 'fetch_probe', results: results });
+                    return;
+                }
+                const url = 'http://' + host + ':4912' + paths[i];
+                fetch(url, { mode: 'cors', signal: AbortSignal.timeout(3000) })
+                    .then(r => {
+                        const ct = r.headers.get('Content-Type') || 'no-ct';
+                        results.push(paths[i] + '=' + r.status + '(' + ct + ')');
+                        // If it's an image, try to read it as a frame
+                        if (ct.includes('jpeg') || ct.includes('image')) {
+                            return r.blob().then(blob => {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                    const b64 = reader.result.split(',')[1];
+                                    if (b64) socket.emit('frame_from_browser', { image: b64, source: url });
+                                };
+                                reader.readAsDataURL(blob);
+                            });
+                        }
+                        // If it's HTML, read first 500 chars
+                        if (ct.includes('html') || ct.includes('text')) {
+                            return r.text().then(txt => {
+                                results.push('HTML:' + txt.substring(0, 300));
+                                socket.emit('diag_result', { source: 'embed_html', html: txt.substring(0, 2000) });
+                            });
+                        }
+                    })
+                    .catch(e => results.push(paths[i] + '=ERR(' + e.message + ')'))
+                    .finally(() => tryNext(i + 1));
+            };
+            tryNext(0);
+        });
+    }
+
+    // 3. Backend requests embed HTML via Python
+    socket.on('diag_embed_html', (data) => {
+        setStatus('Python embed HTML: ' + data.html.substring(0, 200), '#90CAF9');
+    });
+
+    socket.on('diag_result_ack', (data) => {
+        setStatus('Diag received: ' + JSON.stringify(data).substring(0, 150), '#aaa');
+    });
     // -- download
     downloadBtn.addEventListener('click', () => {
         if (!_lastResultB64) return;

@@ -640,6 +640,25 @@ ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
 ui.on_message("camera_record",     ui_record)
 ui.on_message("frame_from_browser", frame_from_browser)
+
+def diag_result(client, data):
+    import logging, re
+    log = logging.getLogger("camera_diag")
+    log.info(f"BROWSER_DIAG: {str(data)[:500]}")
+    html = data.get("html", "")
+    if html:
+        ws_urls    = re.findall(r'ws[s]?://[^\'">\s]+', html)
+        fetch_urls = re.findall(r"fetch\(['\"]([^'\"]+)['\"]", html)
+        log.info(f"EMBED_WS_URLS: {ws_urls}")
+        log.info(f"EMBED_FETCH_URLS: {fetch_urls}")
+        ui.send_message("diag_result_ack",
+            {"ws_urls": ws_urls, "fetch_urls": fetch_urls,
+             "html_preview": html[:500]}, client)
+    else:
+        ui.send_message("diag_result_ack", data, client)
+
+ui.on_message("diag_result",       diag_result)
+
 ui.on_message("override_th",       lambda sid, v: detection_stream.override_threshold(float(v)))
 
 
