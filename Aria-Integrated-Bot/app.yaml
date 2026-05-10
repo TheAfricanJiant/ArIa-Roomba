@@ -1,9 +1,0 @@
-name: Aria-Integrated-Bot
-icon: 🤖
-description: Complete Unified Master Controller for ARIA with EKF Navigation, Video Object Detection, and Telegram Bot
-
-bricks:
-  - arduino:web_ui
-  - arduino:telegram_bot
-  - arduino:mood_detector
-  - arduino:video_object_detection

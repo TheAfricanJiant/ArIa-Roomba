@@ -1,0 +1,12 @@
+name: ARIA — Step Four
+icon: 🤖
+description: >
+  Fully integrated ARIA robot controller.
+  Combines EKF navigation, web UI dashboard, Telegram remote control,
+  and AI object detection into a single app.
+
+bricks:
+  - arduino:web_ui
+  - arduino:telegram_bot
+  - arduino:object_detection
+  - arduino:mood_detector

@@ -211,39 +211,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (_lastMapData) _drawMap(_lastMapData);
     });
-    
-    // ── Video detection controls ──
-    const confidenceSlider = document.getElementById('confidenceSlider');
-    const confidenceValueDisplay = document.getElementById('confidenceValueDisplay');
-    const recentDetectionsList = document.getElementById('recentDetections');
-    
-    if (confidenceSlider) {
-        confidenceSlider.addEventListener('input', (e) => {
-            confidenceValueDisplay.textContent = parseFloat(e.target.value).toFixed(2);
-            socket.emit('override_th', parseFloat(e.target.value));
-        });
-    }
-
-    socket.on('detection', (msg) => {
-        const li = document.createElement('li');
-        li.style.background = '#f5f5f5';
-        li.style.margin = '8px 0';
-        li.style.padding = '8px 12px';
-        li.style.borderRadius = '6px';
-        li.style.fontFamily = 'monospace';
-        li.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-        
-        const pct = Math.round(msg.confidence * 100);
-        const timeStr = new Date(msg.timestamp).toLocaleTimeString();
-        
-        li.innerHTML = `<strong>${msg.content}</strong> <span style="color: #008184;">(${pct}%)</span> <span style="float: right; color: #888;">${timeStr}</span>`;
-        
-        recentDetectionsList.prepend(li);
-        
-        if (recentDetectionsList.children.length > 20) {
-            recentDetectionsList.removeChild(recentDetectionsList.lastChild);
-        }
-    });
 });
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
