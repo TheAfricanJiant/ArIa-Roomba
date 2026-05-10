@@ -45,6 +45,24 @@ SPDX-License-Identifier: MPL-2.0
                     <input type="range" id="speed-slider" min="0" max="255" value="160">
                 </div>
 
+                <div class="telemetry-box" style="margin-top: 14px;">
+                    <h3 class="arduino-text section-title">Vacuum</h3>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <button id="vacuum-toggle-btn" class="tab-btn" style="background:#008184;color:white;min-width:160px;">
+                            🌀 Vacuum OFF
+                        </button>
+                        <div style="flex:1;min-width:220px;">
+                            <label for="vacuum-slider" class="instruction-text">
+                                <strong>PWM:</strong> <span id="vacuum-val">0</span>
+                            </label>
+                            <input type="range" id="vacuum-slider" min="0" max="255" value="0">
+                        </div>
+                    </div>
+                    <p class="instruction-text" style="margin-top: 8px; opacity: 0.85;">
+                        Sends <code>V,&lt;pwm&gt;</code> to the UNO Q (L298N ENB=10, IN3=11, IN4=9).
+                    </p>
+                </div>
+
                 <!-- Raw Sensor Telemetry -->
                 <div class="telemetry-box">
                     <h3 class="arduino-text section-title">Live Sensor Data</h3>

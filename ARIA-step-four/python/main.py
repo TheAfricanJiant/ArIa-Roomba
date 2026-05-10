@@ -11,7 +11,7 @@ from PIL import Image
 from io import BytesIO
 import threading, logging, json, os, time, math
 
-import serial_bridge, motor, telemetry, navigator, camera
+import serial_bridge, motor, telemetry, navigator, camera, vacuum
 
 from arduino.app_bricks.video_objectdetection import VideoObjectDetection
 from datetime import datetime, timezone
@@ -28,7 +28,13 @@ detection_stream = VideoObjectDetection(confidence=0.5, debounce_sec=0.0)
 camera.register_stream(detection_stream)
 
 # ── Robot state ───────────────────────────────────────────────────────────────
-state = {"motors_on": False, "speed": 160, "navigating": False, "mode": "manual"}
+state = {
+    "motors_on": False,
+    "speed": 160,
+    "navigating": False,
+    "mode": "manual",
+    "vacuum": 0,   # 0-255 PWM
+}
 nav   = navigator.Navigator()
 serial_bridge.connect()
 
@@ -433,7 +439,33 @@ def record_cmd(sender: Sender, message: Message):
     threading.Thread(target=_do_record, daemon=True).start()
 
 def vacuum_cmd(sender: Sender, message: Message):
-    sender.reply("🌀 Vacuum hardware not yet wired.")
+    args = message.text.strip().split()
+    if len(args) < 2:
+        sender.reply(
+            "🌀 *Vacuum control*\n"
+            "Usage:\n"
+            "  /vacuum <0-255>\n"
+            "  /vacuum on\n"
+            "  /vacuum off\n"
+            f"Current: {state.get('vacuum', 0)}"
+        )
+        return
+
+    v = args[1].strip().lower()
+    if v in ("on", "start", "1", "true"):
+        pwm = 255
+    elif v in ("off", "stop", "0", "false"):
+        pwm = 0
+    elif v.isdigit():
+        pwm = int(v)
+    else:
+        sender.reply("❌ Invalid. Use `/vacuum on`, `/vacuum off`, or `/vacuum <0-255>`.")
+        return
+
+    pwm = vacuum.set_vacuum(pwm)
+    state["vacuum"] = pwm
+    ui.send_message("state_update", state)
+    sender.reply(f"🌀 Vacuum PWM set to *{pwm}*")
 
 def brush_cmd(sender: Sender, message: Message):
     sender.reply("🪥 Brush hardware not yet wired.")
@@ -497,6 +529,13 @@ def clear_goal(client, data):
     nav.clear_goal(); state["navigating"] = False; state["motors_on"] = False
     motor.send_motor_cmd(0, 0); ui.send_message("state_update", state)
     ui.send_message("path_update", [])
+
+
+def set_vacuum_ui(client, data):
+    pwm = data.get("pwm", 0)
+    pwm = vacuum.set_vacuum(pwm)
+    state["vacuum"] = pwm
+    ui.send_message("state_update", state)
 
 def save_routine(client, data):
     name = data.get("name")
@@ -668,6 +707,7 @@ ui.on_message("set_path",          set_path)
 ui.on_message("clean_zone",        clean_zone_ui)
 ui.on_message("clear_goal",        clear_goal)
 ui.on_message("save_routine",      save_routine)
+ui.on_message("set_vacuum",        set_vacuum_ui)
 ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
 ui.on_message("camera_record",     ui_record)
@@ -721,43 +761,47 @@ def _probe_camera_stream():
     Must run after embed binds (same race as camera.start_frame_grabber)."""
     import urllib.request, logging, re
     import camera as cam
+    global _probe_results
     log = logging.getLogger("camera_probe")
     wait = cam.HTTP_WARMUP_SEC + 5.0
     time.sleep(wait)
     port = cam.PORT
+    hosts = cam.video_http_hosts()
     paths = ["/stream", "/embed", "/", "/snapshot", "/video", "/mjpeg", "/frame", "/cam"]
-    for path in paths:
-        url = f"http://127.0.0.1:{port}{path}"
-        try:
-            resp = urllib.request.urlopen(url, timeout=5)
-            ct    = resp.headers.get("Content-Type", "?")
-            first = resp.read(4096)
-            has_jpeg = b"\xff\xd8" in first
-            ws_urls   = re.findall(rb'ws[s]?://[^\'">\s]+', first)
-            fetch_urls= re.findall(rb"fetch\(['\"]([^'\"]+)['\"]", first)
-            img_srcs  = re.findall(rb'src=["\']([^"\']{4,})["\']', first)
-            result = {
-                "url": url, "ct": ct, "jpeg": has_jpeg,
-                "ws":    [u.decode(errors="replace") for u in ws_urls],
-                "fetch": [u.decode(errors="replace") for u in fetch_urls],
-                "srcs":  [u.decode(errors="replace") for u in img_srcs[:5]],
-                "preview": first[:300].decode(errors="replace")
-            }
-            _probe_results.append(result)
-            log.info(f"PROBE {url}: ct={ct} jpeg={has_jpeg} ws={ws_urls} srcs={img_srcs[:3]}")
-            resp.close()
-            # If raw JPEG found, store it immediately
-            if has_jpeg and b"<html" not in first.lower():
-                log.info(f"PROBE: Raw JPEG at {url}! Storing frame.")
-                soi = first.index(b"\xff\xd8")
-                eoi = first.rfind(b"\xff\xd9")
-                if eoi > soi:
-                    camera._latest_frame_jpeg = first[soi:eoi+2]
-        except Exception as e:
-            log.info(f"PROBE {url}: {e}")
-            _probe_results.append({"url": url, "error": str(e)})
+    log.info("camera_probe hosts: %s", ", ".join(hosts))
+    _probe_results = []
+    for host in hosts:
+        for path in paths:
+            url = f"http://{host}:{port}{path}"
+            try:
+                resp = urllib.request.urlopen(url, timeout=5)
+                ct = resp.headers.get("Content-Type", "?")
+                first = resp.read(4096)
+                has_jpeg = b"\xff\xd8" in first
+                ws_urls = re.findall(rb'ws[s]?://[^\'">\s]+', first)
+                fetch_urls = re.findall(rb"fetch\(['\"]([^'\"]+)['\"]", first)
+                img_srcs = re.findall(rb'src=["\']([^"\']{4,})["\']', first)
+                result = {
+                    "url": url, "ct": ct, "jpeg": has_jpeg,
+                    "ws": [u.decode(errors="replace") for u in ws_urls],
+                    "fetch": [u.decode(errors="replace") for u in fetch_urls],
+                    "srcs": [u.decode(errors="replace") for u in img_srcs[:5]],
+                    "preview": first[:300].decode(errors="replace"),
+                }
+                _probe_results.append(result)
+                log.info(f"PROBE {url}: ct={ct} jpeg={has_jpeg} ws={ws_urls} srcs={img_srcs[:3]}")
+                resp.close()
+                if has_jpeg and b"<html" not in first.lower():
+                    log.info(f"PROBE: Raw JPEG at {url}! Storing frame.")
+                    soi = first.index(b"\xff\xd8")
+                    eoi = first.rfind(b"\xff\xd9")
+                    if eoi > soi:
+                        camera._latest_frame_jpeg = first[soi:eoi + 2]
+            except Exception as e:
+                log.info(f"PROBE {url}: {e}")
+                _probe_results.append({"url": url, "error": str(e)})
     try:
-        ui.send_message("probe_results", {"results": _probe_results})
+        ui.send_message("probe_results", {"results": _probe_results.copy()})
     except Exception:
         pass
     log.info("PROBE done.")

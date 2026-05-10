@@ -4,6 +4,10 @@ const powerText   = document.getElementById('power-text');
 const speedSlider = document.getElementById('speed-slider');
 const speedVal    = document.getElementById('speed-val');
 
+const vacuumToggleBtn = document.getElementById('vacuum-toggle-btn');
+const vacuumSlider    = document.getElementById('vacuum-slider');
+const vacuumVal       = document.getElementById('vacuum-val');
+
 const encL     = document.getElementById('enc-l');
 const encR     = document.getElementById('enc-r');
 const imuAccel = document.getElementById('imu-accel');
@@ -141,6 +145,20 @@ document.addEventListener('DOMContentLoaded', () => {
     powerBtn.addEventListener('click', () => socket.emit('toggle_power', {}));
     speedSlider.addEventListener('input',  (e) => { speedVal.textContent = e.target.value; });
     speedSlider.addEventListener('change', (e) => socket.emit('set_speed', { speed: parseInt(e.target.value) }));
+
+    if (vacuumSlider) {
+        vacuumSlider.addEventListener('input', (e) => { vacuumVal.textContent = e.target.value; });
+        vacuumSlider.addEventListener('change', (e) => socket.emit('set_vacuum', { pwm: parseInt(e.target.value) }));
+    }
+    if (vacuumToggleBtn) {
+        vacuumToggleBtn.addEventListener('click', () => {
+            const cur = parseInt(vacuumSlider ? vacuumSlider.value : '0') || 0;
+            const next = cur > 0 ? 0 : 255;
+            if (vacuumSlider) { vacuumSlider.value = next; }
+            if (vacuumVal) { vacuumVal.textContent = next.toString(); }
+            socket.emit('set_vacuum', { pwm: next });
+        });
+    }
 
     // Tool buttons
     setGoalBtn.addEventListener('click', () => {
@@ -280,6 +298,17 @@ function updateUI(state) {
     powerText.textContent = isOn ? 'MOTORS ON' : 'MOTORS OFF';
     speedSlider.value    = state.speed;
     speedVal.textContent = state.speed;
+
+    // Vacuum
+    if (typeof state.vacuum !== 'undefined' && vacuumSlider && vacuumVal) {
+        const v = parseInt(state.vacuum) || 0;
+        vacuumSlider.value = v;
+        vacuumVal.textContent = v.toString();
+        if (vacuumToggleBtn) {
+            vacuumToggleBtn.textContent = v > 0 ? '🌀 Vacuum ON' : '🌀 Vacuum OFF';
+            vacuumToggleBtn.style.background = v > 0 ? '#4CAF50' : '#008184';
+        }
+    }
     
     // Auto-clear UI if robot stops navigating
     if (!state.navigating && (_waypoints.length > 0 || _zone)) {

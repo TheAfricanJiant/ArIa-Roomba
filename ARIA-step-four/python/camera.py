@@ -1,7 +1,10 @@
 # camera.py for ARIA-step-four
 #
-# Strategy (all stdlib, no external deps):
-#   1. HTTP probe: try every common path at port 4912 for raw JPEG/MJPEG
+# Env: ARIA_VIDEO_HTTP_HOST — comma-separated hosts to try first (e.g. 192.168.1.205).
+#      If unset, guesses LAN IPv4 via default route, then 127.0.0.1 / localhost.
+#
+# Strategy (all stdlib, no external deps except optional OpenCV in grab_jpeg_v4l2):
+#   1. HTTP probe: try every common path at port for raw JPEG/MJPEG
 #   2. HTML parse: if /embed is HTML, extract <img src>, fetch/WebSocket URLs
 #   3. WebSocket probe: try ws:// paths using raw socket + HTTP Upgrade
 #   4. Once frames are found via any method, store in _latest_frame_jpeg
@@ -26,6 +29,45 @@ _frame_lock = threading.Lock()
 _det_lock   = threading.Lock()
 _active_url = None   # the URL that's actually giving us frames
 _ws_socket  = None   # active WebSocket socket, if any
+
+
+def _outbound_ipv4():
+    """Default-route IPv4 (often 192.168.x.x) without sending packets. Fails offline."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.settimeout(0.35)
+        s.connect(("198.51.100.1", 80))  # TEST-NET-2; resolves local bind only
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def video_http_hosts():
+    """Hosts to try for VideoObjectDetection HTTP/WS (:PORT).
+
+    Some App Lab / UNO Q setups bind MJPEG/embed on the LAN address only loopback misses.
+    Override with comma-separated ``ARIA_VIDEO_HTTP_HOST`` (e.g. ``192.168.1.205``).
+    """
+    seen = set()
+    out = []
+    raw = (os.environ.get("ARIA_VIDEO_HTTP_HOST") or "").strip()
+    if raw:
+        for part in raw.split(","):
+            h = part.strip()
+            if h and h not in seen:
+                seen.add(h)
+                out.append(h)
+    lan = _outbound_ipv4()
+    if lan and lan not in seen:
+        seen.add(lan)
+        out.append(lan)
+    for h in ("127.0.0.1", "localhost"):
+        if h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out
 
 
 # ── Detection store ───────────────────────────────────────────────────────────
@@ -53,7 +95,7 @@ def _store_frame(data: bytes):
 
 # ── HTTP probe: check if a URL returns raw JPEG / MJPEG ──────────────────────
 def _http_probe(path):
-    for host in ("127.0.0.1", "localhost"):
+    for host in video_http_hosts():
         url = f"http://{host}:{PORT}{path}"
         try:
             resp = urllib.request.urlopen(url, timeout=4)
@@ -112,32 +154,31 @@ def _http_probe(path):
 
 # ── WebSocket probe: try ws:// using raw socket + HTTP Upgrade ────────────────
 def _ws_probe(path):
-    url = f"ws://localhost:{PORT}{path}"
-    try:
-        # Build a valid WebSocket handshake key
-        raw_key = base64.b64encode(b"ARIACameraProbe1").decode()
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(4)
-        s.connect(("127.0.0.1", PORT))
-        handshake = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: localhost:{PORT}\r\n"
-            f"Upgrade: websocket\r\n"
-            f"Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {raw_key}\r\n"
-            f"Sec-WebSocket-Version: 13\r\n"
-            f"\r\n"
-        )
-        s.sendall(handshake.encode())
-        response = s.recv(4096).decode(errors="replace")
-        if "101" in response:
-            log.info(f"WS: Connected at {url}!")
-            return s   # caller must read frames
-        else:
-            log.debug(f"WS {url}: no 101, got: {response[:200]}")
+    raw_key = base64.b64encode(b"ARIACameraProbe1").decode()
+    for host in video_http_hosts():
+        url = f"ws://{host}:{PORT}{path}"
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(4)
+            s.connect((host, PORT))
+            handshake = (
+                f"GET {path} HTTP/1.1\r\n"
+                f"Host: {host}:{PORT}\r\n"
+                f"Upgrade: websocket\r\n"
+                f"Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {raw_key}\r\n"
+                f"Sec-WebSocket-Version: 13\r\n"
+                f"\r\n"
+            )
+            s.sendall(handshake.encode())
+            response = s.recv(4096).decode(errors="replace")
+            if "101" in response:
+                log.info("WS: Connected at %s", url)
+                return s
+            log.debug("WS %s: no 101, got: %s", url, response[:200])
             s.close()
-    except Exception as e:
-        log.debug(f"WS {url}: {e}")
+        except Exception as e:
+            log.debug("WS %s: %s", url, e)
     return None
 
 
@@ -209,7 +250,8 @@ def _main_loop():
             PORT,
         )
         time.sleep(HTTP_WARMUP_SEC)
-    log.info("Camera: starting discovery on port %d", PORT)
+    hosts = video_http_hosts()
+    log.info("Camera: starting discovery on port %d (HTTP hosts: %s)", PORT, ", ".join(hosts))
     found_html_ws = []
 
     # Phase 1: HTTP probe all paths
@@ -246,7 +288,11 @@ def _main_loop():
     for path in ws_candidates:
         s = _ws_probe(path)
         if s:
-            _active_url = f"ws://localhost:{PORT}{path}"
+            try:
+                ph = s.getpeername()[0]
+            except Exception:
+                ph = ""
+            _active_url = f"ws://{ph}:{PORT}{path}" if ph else f"ws://*:{PORT}{path}"
             _ws_socket = s
             log.info(f"Camera: reading WebSocket frames from {_active_url}")
             _ws_loop(s)
