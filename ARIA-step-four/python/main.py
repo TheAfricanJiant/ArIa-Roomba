@@ -673,8 +673,12 @@ ui.on_message("camera_detect",     ui_camera_detect)
 ui.on_message("camera_record",     ui_record)
 ui.on_message("frame_from_browser", frame_from_browser)
 
+_diag_last_summary = None
+
+
 def diag_result(client, data):
     import logging, re
+    global _diag_last_summary
     log = logging.getLogger("camera_diag")
     blob = str(data) if data is not None else ""
     if any(
@@ -682,6 +686,11 @@ def diag_result(client, data):
         for k in ("metamask", "chainchanged", "metamask-provider", "walletconnect", "ethereum")
     ):
         return
+    if isinstance(data, dict) and data.get("source") == "probe_display":
+        sm = data.get("summary")
+        if sm and sm == _diag_last_summary:
+            return
+        _diag_last_summary = sm
     log.info(f"BROWSER_DIAG: {blob[:500]}")
     if not isinstance(data, dict):
         return
@@ -708,14 +717,17 @@ ui.on_message("override_th",       lambda sid, v: detection_stream.override_thre
 _probe_results = []
 
 def _probe_camera_stream():
-    """Probe port 4912: try all paths, detect JPEG bytes, log HTML src/ws URLs.
-    Results are sent to the browser via Socket.IO so user doesn't need server logs."""
+    """Probe VideoObjectDetection HTTP: try common paths after Brick warm-up.
+    Must run after embed binds (same race as camera.start_frame_grabber)."""
     import urllib.request, logging, re
+    import camera as cam
     log = logging.getLogger("camera_probe")
-    time.sleep(6)  # wait for brick to fully start
+    wait = cam.HTTP_WARMUP_SEC + 5.0
+    time.sleep(wait)
+    port = cam.PORT
     paths = ["/stream", "/embed", "/", "/snapshot", "/video", "/mjpeg", "/frame", "/cam"]
     for path in paths:
-        url = f"http://localhost:4912{path}"
+        url = f"http://127.0.0.1:{port}{path}"
         try:
             resp = urllib.request.urlopen(url, timeout=5)
             ct    = resp.headers.get("Content-Type", "?")

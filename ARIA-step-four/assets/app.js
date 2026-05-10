@@ -66,14 +66,17 @@ function extractFirstJpegBytes(arrayBuffer, maxScan) {
     return null;
 }
 
-/** Grab one JPEG from VideoObjectDetection on port 4912. */
+/** Embed/MJPEG HTTP (App Lab default 4912; keep in sync with ARIA_VIDEO_HTTP_PORT in Python env). */
+const VIDEO_HTTP_PORT = (typeof window.ARIA_VIDEO_HTTP_PORT !== 'undefined' && window.ARIA_VIDEO_HTTP_PORT) || 4912;
+
+/** Grab one JPEG from VideoObjectDetection HTTP endpoint. */
 async function fetchOneJpegFromBrick4912(host) {
     const paths = ['/snapshot', '/stream', '/', '/video', '/frame', '/mjpeg', '/cam', '/embed'];
     for (let i = 0; i < paths.length; i++) {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 4000);
         try {
-            const r = await fetch(`http://${host}:4912${paths[i]}`, {
+            const r = await fetch(`http://${host}:${VIDEO_HTTP_PORT}${paths[i]}`, {
                 signal: controller.signal,
                 mode: 'cors',
                 cache: 'no-store',
@@ -552,7 +555,7 @@ function cellColor(val) {
     const confidenceVal  = document.getElementById('cam-confidence-val');
     const detectionsList = document.getElementById('cam-detections-list');
 
-    const STREAM_PORT = 4912;
+    const STREAM_PORT = VIDEO_HTTP_PORT;
     const STREAM_PATH = '/embed';
     let _streamIntervalId = null;
     let _lastResultB64    = null;
@@ -715,7 +718,7 @@ function cellColor(val) {
         if (/metamask|chainChanged|metamask-provider|wallet/i.test(s)) return;
 
         const src = event.origin || 'unknown';
-        const fromBrick = src.includes(':4912') || /^\s*\/9j\//.test(typeof d === 'string' ? d : '');
+        const fromBrick = src.includes(`:${VIDEO_HTTP_PORT}`) || /^\s*\/9j\//.test(typeof d === 'string' ? d : '');
         if (!fromBrick && !(typeof d === 'string' && d.startsWith('/9j/'))) return;
 
         const preview = typeof d === 'string'
@@ -743,8 +746,8 @@ function cellColor(val) {
                     socket.emit('diag_result', { source: 'fetch_probe', results: results });
                     return;
                 }
-                // Must use plain http dashboard; mixed content blocks http:4912 if page is https
-                const url = 'http://' + host + ':4912' + paths[i];
+                // Plain http dashboard; https page cannot fetch http MJPEG cross-origin easily
+                const url = 'http://' + host + ':' + VIDEO_HTTP_PORT + paths[i];
                 fetch(url, { mode: 'cors', signal: AbortSignal.timeout(3000) })
                     .then(r => {
                         const ct = r.headers.get('Content-Type') || 'no-ct';
@@ -783,10 +786,12 @@ function cellColor(val) {
 
     // Show probe results from Python in the camera status bar
     socket.on('probe_results', (data) => {
+        const _ph = ':' + VIDEO_HTTP_PORT;
         const rows = (data.results || []).map(r => {
-            if (r.error) return r.url.split('4912')[1] + '=ERR';
+            const path = r.url && r.url.split(_ph)[1] != null ? r.url.split(_ph)[1] : r.url || '?';
+            if (r.error) return path + '=ERR';
             const flags = (r.jpeg ? 'JPEG!' : '') + (r.ws.length ? ' WS:'+r.ws[0] : '') + (r.fetch.length ? ' FETCH:'+r.fetch[0] : '') + (r.srcs.length ? ' SRC:'+r.srcs[0] : '');
-            return r.url.split('4912')[1] + '=' + r.ct.split(';')[0] + (flags ? '['+flags+']' : '');
+            return path + '=' + r.ct.split(';')[0] + (flags ? '['+flags+']' : '');
         }).join(' | ');
         setStatus('PROBE: ' + rows, '#90CAF9');
         console.log('PROBE RESULTS:', JSON.stringify(data.results, null, 2));

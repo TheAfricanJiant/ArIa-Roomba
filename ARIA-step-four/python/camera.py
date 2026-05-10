@@ -11,7 +11,12 @@ import glob, io, base64, hashlib, logging, os, re, socket, struct, threading, ti
 
 log = logging.getLogger(__name__)
 
-PORT = 4912
+# VideoObjectDetection embed/MJPEG HTTP (Arduino App Lab default is 4912).
+PORT = int(os.environ.get("ARIA_VIDEO_HTTP_PORT", "4912"))
+# Seconds to wait before first probe: grabber thread starts before App.run() finishes
+# starting V4LCamera + the embed server; probing too early yields connection refused.
+HTTP_WARMUP_SEC = float(os.environ.get("ARIA_VIDEO_HTTP_WARMUP_SEC", "14"))
+RETRY_SEC = float(os.environ.get("ARIA_CAMERA_RETRY_SEC", "2.5"))
 HTTP_PATHS = ["/stream", "/embed", "/", "/snapshot", "/video", "/mjpeg", "/frame", "/cam"]
 WS_PATHS   = ["/ws", "/stream", "/", "/video", "/cam"]
 
@@ -197,6 +202,13 @@ def _read_mjpeg(resp, seed_data=b""):
 # ── Main discovery + streaming loop ──────────────────────────────────────────
 def _main_loop():
     global _active_url, _ws_socket
+    if HTTP_WARMUP_SEC > 0:
+        log.info(
+            "Camera: waiting %.1fs for VideoObjectDetection HTTP on :%d (Brick starts after App.run).",
+            HTTP_WARMUP_SEC,
+            PORT,
+        )
+        time.sleep(HTTP_WARMUP_SEC)
     log.info("Camera: starting discovery on port %d", PORT)
     found_html_ws = []
 
@@ -240,8 +252,12 @@ def _main_loop():
             _ws_loop(s)
             return
 
-    log.warning("Camera: no frame source found at port %d. Retrying in 15s.", PORT)
-    time.sleep(15)
+    log.warning(
+        "Camera: no frame source on :%d (connection refused is normal until embed is up). Retrying in %.1fs.",
+        PORT,
+        RETRY_SEC,
+    )
+    time.sleep(RETRY_SEC)
     _main_loop()   # retry
 
 
