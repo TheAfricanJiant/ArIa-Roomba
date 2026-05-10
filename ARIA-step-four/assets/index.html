@@ -7,7 +7,7 @@ SPDX-License-Identifier: MPL-2.0
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ARIA — EKF Dashboard</title>
+    <title>ARIA — Step Four Dashboard</title>
     <link rel="icon" type="image/png" href="./img/favicon.png">
     <link rel="stylesheet" type="text/css" href="style.css">
 </head>
@@ -25,6 +25,7 @@ SPDX-License-Identifier: MPL-2.0
             <button class="tab-btn active" id="tab-control-btn" onclick="switchTab('control')">⚙️ Control</button>
             <button class="tab-btn" id="tab-map-btn" onclick="switchTab('map')">🗺️ Map</button>
             <button class="tab-btn" id="tab-pose-btn" onclick="switchTab('pose')">📐 Pose</button>
+            <button class="tab-btn" id="tab-camera-btn" onclick="switchTab('camera')">📷 Camera</button>
         </nav>
 
         <!-- ══════════════ TAB: CONTROL ══════════════ -->
@@ -128,6 +129,44 @@ SPDX-License-Identifier: MPL-2.0
         </div>
 
     </div>
+
+        <!-- ══════════════ TAB: CAMERA ══════════════ -->
+        <div class="tab-panel hidden" id="tab-camera">
+            <div class="container">
+                <div class="telemetry-box">
+                    <h3 class="arduino-text section-title">📷 Camera</h3>
+
+                    <!-- Live image / result display -->
+                    <div id="camera-preview-wrapper" style="width:100%;min-height:240px;background:#1a1a2e;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;overflow:hidden;">
+                        <img id="camera-img" src="" alt="" style="max-width:100%;max-height:480px;display:none;border-radius:12px;">
+                        <span id="camera-placeholder" style="color:#666;font-size:14px;">No image yet — take a snapshot or upload one</span>
+                    </div>
+
+                    <!-- Status message -->
+                    <p id="camera-status" style="text-align:center;font-size:13px;color:#aaa;margin-bottom:12px;"></p>
+
+                    <!-- Action buttons -->
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:16px;">
+                        <button id="snapshot-btn" class="tab-btn" style="background:#008184;color:white;">📸 Snapshot</button>
+                        <button id="detect-btn" class="tab-btn" style="background:#1976D2;color:white;">🔍 Snapshot + Detect</button>
+                        <button id="camera-upload-btn" class="tab-btn" style="background:#555;color:white;">📂 Upload Image</button>
+                        <button id="camera-detect-upload-btn" class="tab-btn" style="background:#6a1b9a;color:white;">🔍 Upload + Detect</button>
+                        <button id="camera-download-btn" class="tab-btn" style="display:none;background:#388e3c;color:white;">⬇️ Download</button>
+                    </div>
+
+                    <!-- Hidden file input -->
+                    <input type="file" id="camera-file-input" accept="image/png,image/jpeg" style="display:none;">
+
+                    <!-- Confidence slider -->
+                    <div class="slider-section" style="margin-bottom:8px;">
+                        <label for="cam-confidence" class="instruction-text">
+                            <strong>Confidence:</strong> <span id="cam-confidence-val">50</span>%
+                        </label>
+                        <input type="range" id="cam-confidence" min="1" max="99" value="50">
+                    </div>
+                </div>
+            </div>
+        </div>
 
     <script src="libs/socket.io.min.js"></script>
     <script src="app.js"></script>
