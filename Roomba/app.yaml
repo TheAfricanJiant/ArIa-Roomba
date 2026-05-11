@@ -1,6 +1,0 @@
-name: ARIA Roomba Controller
-icon: 🧹
-description: Autonomous navigation controller with EKF and Occupancy Grid.
-
-bricks:
-  - arduino:web_ui
