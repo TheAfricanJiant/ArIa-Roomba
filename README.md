@@ -1,5 +1,14 @@
+
+### Upload Image on the WebUI and get Object detection result 
 ![ARIA](cataria.png)
+
+### Or on the telegram Bot
+![ARIA](telegram.png)
+
+### Live Webcam object detection from robot
 ![ARIA](OBJ.png)
+
+### DIY Vacum
 ![DIY Vacum](explosion-ezgif.gif)
 
 ---
