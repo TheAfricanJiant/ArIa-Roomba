@@ -3,7 +3,8 @@
 
 ---
 ### NOTE
-- Crontab can be used to startup teh socat connection used by the Arduino Uno Q container to communicaete with teh XRP controller over serial 
+- Crontab can be used to startup teh socat connection automatically on reboot.  Socat creates a virtual serial port for the Arduino Uno Q container to communicaete with teh XRP controller over serial 
+- `socat PTY,raw,echo=0,link=./xrp-serial TCP:localhost:8888`
  - ![ARIA](crontab.png)
 
 ## Demo 1 — Encoders, IMU, Vacuuming and Trajectory
