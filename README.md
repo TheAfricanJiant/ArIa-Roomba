@@ -19,6 +19,28 @@
 
  - The file xrp-Brute.cpp helps find the address of you IMU on the internal i2C bus in the XRP controller.  Please create a copy of the XRW platform.io project folder, and replace the main.cpp code in it with the code in xrp-Brute.cpp. Run it with your serial monitor open
 
+# Edge Impulse 
+## Data Collection — Vacuum Sound Classifier
+### Overview
+Records labelled vacuum audio clips from a **Seeed ReSpeaker Lite** (ESP32-S3)
+and saves them as `.wav` files ready for upload to **Edge Impulse**.
+
+### Hardware
+- Seeed ReSpeaker Lite (XMOS + ESP32-S3)
+- USB cable to PC
+- Vacuum cleaner under test
+
+### Files
+| File | Purpose |
+|---|---|
+| `esp32s3-roomba-sound-collection/src/main.cpp` | PlatformIO firmware — streams raw PCM over serial |
+| `recorder.py` | PC script — triggers recordings and saves `.wav` files |
+
+### Setup
+
+### 1. Flash the firmware
+
+
 ## Demo 1 — Encoders, IMU, Vacuuming and Trajectory
 
 This demo showcases ARIA's core capabilities running live on the Arduino UNO Q:
