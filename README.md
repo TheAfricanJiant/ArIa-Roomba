@@ -40,6 +40,9 @@ and saves them as `.wav` files ready for upload to **Edge Impulse**.
 
 ### 1. Flash the firmware
 
+#### Dirt collection
+![ARIA](no.png)
+
 
 ## Demo 1 — Encoders, IMU, Vacuuming and Trajectory
 
