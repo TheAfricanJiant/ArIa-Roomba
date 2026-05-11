@@ -7,6 +7,8 @@
 - `socat PTY,raw,echo=0,link=./xrp-serial TCP:localhost:8888`
  - ![ARIA](crontab.png)
 
+ - The file xrp-Brute.cpp helps find the address of you IMU on the internal i2C bus in the XRP controller.  Please create a copy of the XRW platform.io project folder, and replace the main.cpp code in it with the code in xrp-Brute.cpp. Run it with your serial monitor open
+
 ## Demo 1 — Encoders, IMU, Vacuuming and Trajectory
 
 This demo showcases ARIA's core capabilities running live on the Arduino UNO Q:
