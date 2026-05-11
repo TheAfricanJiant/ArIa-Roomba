@@ -2,6 +2,9 @@
 ![ARIA](OBJ.png)
 
 ---
+### NOTE
+- Crontab can be used to startup teh socat connection used by the Arduino Uno Q container to communicaete with teh XRP controller over serial 
+ - ![ARIA](crontab.png)
 
 ## Demo 1 — Encoders, IMU, Vacuuming and Trajectory
 
