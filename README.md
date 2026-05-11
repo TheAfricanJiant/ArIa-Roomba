@@ -13,4 +13,6 @@ This demo showcases ARIA's core capabilities running live on the Arduino UNO Q:
 - 🔍 **Object detection** — the `VideoObjectDetection` brick identifying objects through the camera stream
 
 src="https://www.youtube.com/embed/BKaiV54UXMU?si=G5n-rL69w6N3c07x" 
-> **Demo1** — recorded on the Arduino UNO Q running ARIA-step-four.
+> **Demo1** — recorded on the Arduino UNO Q running ARIA-step-four.`
+
+> **Demo2** — Using Project Aria-step-Four to deonstrate UI and Telegram control of the robot. src= "https://youtu.be/BKaiV54UXMU
