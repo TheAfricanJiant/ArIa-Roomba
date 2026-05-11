@@ -65,16 +65,17 @@ SPDX-License-Identifier: MPL-2.0
 
                 <div class="telemetry-box" style="margin-top: 14px;">
                     <h3 class="arduino-text section-title">Vacuum</h3>
-                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
                         <button id="vacuum-toggle-btn" class="tab-btn" style="background:#008184;color:white;min-width:160px;">
                             🌀 Vacuum OFF
                         </button>
-                        <div style="flex:1;min-width:220px;">
-                            <label for="vacuum-slider" class="instruction-text">
-                                <strong>PWM:</strong> <span id="vacuum-val">0</span>
-                            </label>
-                            <input type="range" id="vacuum-slider" min="0" max="255" value="0">
-                        </div>
+                        <button id="vacuum-reverse-btn" class="tab-btn" style="background:#8e44ad;color:white;">⟲ Reverse</button>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <label for="vacuum-slider" class="instruction-text">
+                            <strong>PWM:</strong> <span id="vacuum-val">0</span>
+                        </label>
+                        <input type="range" id="vacuum-slider" min="0" max="255" value="0" style="width:100%;">
                     </div>
                     <p class="instruction-text" style="margin-top: 8px; opacity: 0.85;">
                         Sends <code>V,&lt;pwm&gt;</code> to the UNO Q (L298N ENB=10, IN3=11, IN4=9).

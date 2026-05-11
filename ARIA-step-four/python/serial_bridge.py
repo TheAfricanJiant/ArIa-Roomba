@@ -34,7 +34,20 @@ def send(data: str):
             sock.sendall(data.encode('utf-8'))
         except Exception as e:
             log.error(f"Send failed: {e}")
-            sock = None  # Mark as disconnected
+            sock = None
+
+
+def reset_encoders():
+    """Send the encoder-reset command to the XRW firmware."""
+    send("R\n")
+    log.info("Encoder reset command sent.")
+
+
+def set_servo(pwm: int):
+    """Set the 360° cleaning servo PWM (0–255, 0 = stop)."""
+    pwm = max(0, min(255, int(pwm)))
+    send(f"S,{pwm}\n")
+    log.info(f"Servo PWM set to {pwm}")
 
 
 _buffer = ""
@@ -44,9 +57,8 @@ def readline() -> str:
     global sock, _buffer
     if not sock:
         return ''
-        
+
     try:
-        # Try to read more data if available
         data = sock.recv(1024).decode('utf-8', errors='ignore')
         if not data:
             log.error("Socket connection closed by remote host")
@@ -59,11 +71,11 @@ def readline() -> str:
         log.error(f"Read failed: {e}")
         sock = None
         return ''
-        
+
     if '\n' in _buffer:
         line, _buffer = _buffer.split('\n', 1)
         return line.strip()
-    
+
     return ''
 
 
