@@ -27,8 +27,13 @@ volatile long encR = 0;
 
 Adafruit_LSM6DSOX imu;
 
-void onEncL() { encL++; }
-void onEncR() { encR++; }
+// If you only wire one encoder channel (A), you can't know direction from encoder alone.
+// We infer direction from the last commanded wheel sign.
+volatile int8_t dirL = 1;
+volatile int8_t dirR = 1;
+
+void onEncL() { encL += dirL; }
+void onEncR() { encR += dirR; }
 
 void printSerialf(const char* fmt, ...) {
   char buf[180];
@@ -40,15 +45,29 @@ void printSerialf(const char* fmt, ...) {
 }
 
 void setMotors(int l, int r) {
+  // Clamp to PWM range
+  l = constrain(l, -255, 255);
+  r = constrain(r, -255, 255);
+
+  // Store direction for encoder sign
+  dirL = (l >= 0) ? 1 : -1;
+  dirR = (r >= 0) ? 1 : -1;
+
+  // Motor polarity: make both sides consistent.
+  // If your robot still drives backwards when commanded forward,
+  // flip BOTH ternaries below (swap HIGH/LOW).
   digitalWrite(MOTOR_L_PH, l >= 0 ? HIGH : LOW);
+  digitalWrite(MOTOR_R_PH, r >= 0 ? HIGH : LOW);
+
   analogWrite(MOTOR_L_EN, abs(l));
-  digitalWrite(MOTOR_R_PH, r >= 0 ? LOW : HIGH);
   analogWrite(MOTOR_R_EN, abs(r));
 }
 
 void stopMotors() {
   analogWrite(MOTOR_L_EN, 0);
   analogWrite(MOTOR_R_EN, 0);
+  dirL = 1;
+  dirR = 1;
 }
 
 unsigned long lastTelemetryTime = 0;

@@ -8,6 +8,12 @@ const vacuumToggleBtn = document.getElementById('vacuum-toggle-btn');
 const vacuumSlider    = document.getElementById('vacuum-slider');
 const vacuumVal       = document.getElementById('vacuum-val');
 
+const driveForwardBtn  = document.getElementById('drive-forward-btn');
+const driveBackwardBtn = document.getElementById('drive-backward-btn');
+const driveLeftBtn     = document.getElementById('drive-left-btn');
+const driveRightBtn    = document.getElementById('drive-right-btn');
+const driveStopBtn     = document.getElementById('drive-stop-btn');
+
 const encL     = document.getElementById('enc-l');
 const encR     = document.getElementById('enc-r');
 const imuAccel = document.getElementById('imu-accel');
@@ -159,6 +165,16 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.emit('set_vacuum', { pwm: next });
         });
     }
+
+    function sendDrive(action) {
+        const spd = parseInt(speedSlider ? speedSlider.value : '160') || 160;
+        socket.emit('manual_drive', { action, speed: spd });
+    }
+    if (driveForwardBtn)  driveForwardBtn.addEventListener('click',  () => sendDrive('forward'));
+    if (driveBackwardBtn) driveBackwardBtn.addEventListener('click', () => sendDrive('backward'));
+    if (driveLeftBtn)     driveLeftBtn.addEventListener('click',     () => sendDrive('left'));
+    if (driveRightBtn)    driveRightBtn.addEventListener('click',    () => sendDrive('right'));
+    if (driveStopBtn)     driveStopBtn.addEventListener('click',     () => sendDrive('stop'));
 
     // Tool buttons
     setGoalBtn.addEventListener('click', () => {

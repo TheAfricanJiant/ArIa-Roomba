@@ -46,6 +46,24 @@ SPDX-License-Identifier: MPL-2.0
                 </div>
 
                 <div class="telemetry-box" style="margin-top: 14px;">
+                    <h3 class="arduino-text section-title">Manual Drive</h3>
+                    <p class="instruction-text" style="margin-top: 2px; opacity: 0.85;">
+                        Use these buttons for direct motor commands (disables navigation).
+                    </p>
+                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                        <button id="drive-forward-btn" class="tab-btn" style="background:#4CAF50;color:white;min-width:120px;">⬆️ Forward</button>
+                    </div>
+                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                        <button id="drive-left-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;">⬅️ Left</button>
+                        <button id="drive-stop-btn" class="tab-btn" style="background:#e53935;color:white;min-width:120px;">🛑 Stop</button>
+                        <button id="drive-right-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;">➡️ Right</button>
+                    </div>
+                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                        <button id="drive-backward-btn" class="tab-btn" style="background:#6d4c41;color:white;min-width:120px;">⬇️ Back</button>
+                    </div>
+                </div>
+
+                <div class="telemetry-box" style="margin-top: 14px;">
                     <h3 class="arduino-text section-title">Vacuum</h3>
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                         <button id="vacuum-toggle-btn" class="tab-btn" style="background:#008184;color:white;min-width:160px;">

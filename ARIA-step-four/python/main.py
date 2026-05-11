@@ -547,6 +547,39 @@ def save_routine(client, data):
         ui.send_message("routines_list", routines)
     except Exception as e: log.error(f"Save routine error: {e}")
 
+
+def manual_drive_ui(client, data):
+    """Manual drive commands from the website (forward/back/left/right/stop)."""
+    payload = data or {}
+    action = (payload.get("action") or "").strip().lower()
+    try:
+        spd = int(payload.get("speed", state.get("speed", 160)))
+    except Exception:
+        spd = int(state.get("speed", 160))
+    spd = max(0, min(255, spd))
+
+    if action == "stop":
+        state["motors_on"] = False
+        state["navigating"] = False
+        nav.clear_goal()
+        motor.send_motor_cmd(0, 0)
+    elif action == "forward":
+        state["motors_on"] = True
+        motor.send_motor_cmd(spd, spd)
+    elif action == "backward":
+        state["motors_on"] = True
+        motor.send_motor_cmd(-spd, -spd)
+    elif action == "left":
+        state["motors_on"] = True
+        motor.send_motor_cmd(-spd, spd)
+    elif action == "right":
+        state["motors_on"] = True
+        motor.send_motor_cmd(spd, -spd)
+    else:
+        return
+
+    ui.send_message("state_update", state)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # NAVIGATION LOOP (background thread)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -708,6 +741,7 @@ ui.on_message("clean_zone",        clean_zone_ui)
 ui.on_message("clear_goal",        clear_goal)
 ui.on_message("save_routine",      save_routine)
 ui.on_message("set_vacuum",        set_vacuum_ui)
+ui.on_message("manual_drive",      manual_drive_ui)
 ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
 ui.on_message("camera_record",     ui_record)
