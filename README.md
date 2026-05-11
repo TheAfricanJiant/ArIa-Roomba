@@ -3,7 +3,7 @@
 ![ARIA](cataria.png)
 
 ### Or on the telegram Bot
-![ARIA](telegram.png)
+![ARIA](telegram.jpg)
 
 ### Live Webcam object detection from robot
 ![ARIA](OBJ.png)
