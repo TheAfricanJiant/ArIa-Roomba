@@ -93,24 +93,24 @@ SPDX-License-Identifier: MPL-2.0
                             <span class="telem-value" id="imu-gyro">X: 0.00 | Y: 0.00 | Z: 0.00</span>
                         </div>
                     </div>
-                    <!-- Ultrasonic sensors -->
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;justify-content:center;">
-                        <div style="background:#1a1a2e;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
-                            <div style="font-size:10px;color:#888;margin-bottom:2px;">◀ LEFT</div>
-                            <div id="us-left" style="font-size:18px;font-weight:700;color:#00e5ff;">—</div>
-                            <div style="font-size:10px;color:#888;">cm</div>
+                    <div class="sonar-panel">
+                        <div class="sonar-card">
+                            <span class="sonar-label">LEFT</span>
+                            <span class="sonar-value" id="us-left">—</span>
+                            <span class="sonar-unit">cm</span>
                         </div>
-                        <div style="background:#1a1a2e;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
-                            <div style="font-size:10px;color:#888;margin-bottom:2px;">▲ FRONT</div>
-                            <div id="us-front" style="font-size:18px;font-weight:700;color:#69f0ae;">—</div>
-                            <div style="font-size:10px;color:#888;">cm</div>
+                        <div class="sonar-card sonar-front">
+                            <span class="sonar-label">FRONT</span>
+                            <span class="sonar-value" id="us-front">—</span>
+                            <span class="sonar-unit">cm</span>
                         </div>
-                        <div style="background:#1a1a2e;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
-                            <div style="font-size:10px;color:#888;margin-bottom:2px;">RIGHT ▶</div>
-                            <div id="us-right" style="font-size:18px;font-weight:700;color:#00e5ff;">—</div>
-                            <div style="font-size:10px;color:#888;">cm</div>
+                        <div class="sonar-card">
+                            <span class="sonar-label">RIGHT</span>
+                            <span class="sonar-value" id="us-right">—</span>
+                            <span class="sonar-unit">cm</span>
                         </div>
                     </div>
+                    <div class="sonar-status">Ultrasonic stream: <span id="us-last">waiting</span></div>
                 </div>
 
                 <div id="error-container" class="error-message" style="display: none;"></div>

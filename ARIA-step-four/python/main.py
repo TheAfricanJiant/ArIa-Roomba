@@ -56,30 +56,106 @@ state = {
     "auto_clean":  False,
 }
 
+MATRIX_W = 13
+MATRIX_H = 8
+_last_matrix_mode = None
+_last_matrix_draw = 0.0
+
+def _matrix_frame(rows, brightness=7):
+    frame = []
+    for row in rows:
+        row = row[:MATRIX_W].ljust(MATRIX_W, ".")
+        frame.extend(brightness if ch != "." else 0 for ch in row)
+    return frame
+
 MATRIX_ICONS = {
-    "IDLE":  [0]*96,
-    "NAV":   [0]*96,
-    "CLEAN": [0]*96,
-    "AVOID": [0]*96,
-    "DOCK":  [0]*96
+    "IDLE": _matrix_frame([
+        ".............",
+        "...#######...",
+        "..#.......#..",
+        "..#.......#..",
+        "..#.......#..",
+        "..#.......#..",
+        "...#######...",
+        ".............",
+    ], 3),
+    "MANUAL": _matrix_frame([
+        "......#......",
+        ".....###.....",
+        "..#..###..#..",
+        ".###########.",
+        "..#..###..#..",
+        ".....###.....",
+        "......#......",
+        ".............",
+    ], 6),
+    "NAV": _matrix_frame([
+        "......#......",
+        ".....###.....",
+        "....#####....",
+        "...###.###...",
+        "..###...###..",
+        ".###.....###.",
+        "......#......",
+        ".....###.....",
+    ], 6),
+    "CLEAN": _matrix_frame([
+        "..#########..",
+        ".#.........#.",
+        ".#.##...##.#.",
+        ".#..#####..#.",
+        ".#..#####..#.",
+        ".#.##...##.#.",
+        ".#.........#.",
+        "..#########..",
+    ], 5),
+    "AVOID": _matrix_frame([
+        "#...........#",
+        ".#.........#.",
+        "..#.......#..",
+        "...#.....#...",
+        "....#...#....",
+        ".....#.#.....",
+        "......#......",
+        ".....#.#.....",
+    ], 7),
+    "DOCK": _matrix_frame([
+        ".....###.....",
+        "....#####....",
+        "...##...##...",
+        "..##.....##..",
+        ".###########.",
+        "...#.....#...",
+        "...#.....#...",
+        "...#######...",
+    ], 5),
+    "OFF": _matrix_frame([
+        ".............",
+        "...#######...",
+        "..#.......#..",
+        ".#...###...#.",
+        ".#...###...#.",
+        "..#.......#..",
+        "...#######...",
+        ".............",
+    ], 2),
 }
-# Simple X for AVOID
-for i in range(8):
-    MATRIX_ICONS["AVOID"][i*12 + i + 2] = 7
-    MATRIX_ICONS["AVOID"][i*12 + 9 - i] = 7
-# Simple box for IDLE
-for i in range(8):
-    MATRIX_ICONS["IDLE"][i*12] = 2; MATRIX_ICONS["IDLE"][i*12+11] = 2
-    
+
 def update_hardware_indicators():
-    mode_str = "IDLE"
+    global _last_matrix_mode, _last_matrix_draw
+
+    mode_str = "OFF"
     if state["auto_clean"]:
         mode_str = "CLEAN"
         Leds.set_led1_color(True, True, False) # Yellow
     elif state["navigating"]:
         mode_str = "NAV"
         Leds.set_led1_color(False, False, True) # Blue
+    elif state["motors_on"]:
+        mode_str = "MANUAL"
+        Leds.set_led1_color(False, True, True) # Cyan
     else:
+        mode_str = "IDLE"
         Leds.set_led1_color(False, True, False) # Green
         
     try:
@@ -105,7 +181,11 @@ def update_hardware_indicators():
     except: pass
     
     try:
-        Bridge.call("draw", MATRIX_ICONS.get(mode_str, MATRIX_ICONS["IDLE"]))
+        now = time.time()
+        if mode_str != _last_matrix_mode or now - _last_matrix_draw > 5.0:
+            Bridge.call("draw", MATRIX_ICONS.get(mode_str, MATRIX_ICONS["IDLE"]))
+            _last_matrix_mode = mode_str
+            _last_matrix_draw = now
     except: pass
 
 nav   = navigator.Navigator()
@@ -637,6 +717,7 @@ def set_speed(client, data):
 def on_get_initial_state(client, data):
     ui.send_message("state_update", state, client)
     ui.send_message("routines_list", _load_routines(), client)
+    ui.send_message("us_update", telemetry.get_ultrasonics(), client)
 
 def set_goal(client, data):
     x = data.get("x", 0.0); y = data.get("y", 0.0)

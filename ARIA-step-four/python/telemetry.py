@@ -357,7 +357,7 @@ def _system_health_loop(ui):
         time.sleep(4)  # interval=1 + 4 = 5 seconds total
 
 # ── Ultrasonic polling thread ─────────────────────────────────────────────────
-def _us_poll_loop():
+def _us_poll_loop(ui=None):
     """Background thread: poll UNO Q ultrasonics via Bridge RPC every 200ms."""
     try:
         from arduino.app_utils import Bridge
@@ -374,6 +374,8 @@ def _us_poll_loop():
             telemetry["us_front"] = float(f) if f is not None else 999.0
             telemetry["us_right"] = float(r) if r is not None else 999.0
             telemetry["us_left"]  = float(l) if l is not None else 999.0
+            if ui:
+                ui.send_message('us_update', get_ultrasonics())
         except Exception as e:
             log.debug(f"US poll error: {e}")
         time.sleep(US_POLL_INTERVAL_S)
@@ -384,7 +386,7 @@ def telemetry_loop(ui) -> None:
     """Background thread: read XRW serial, run EKF, push to WebUI."""
     global _last_map_push
     # Start ultrasonic and system health polling in their own threads
-    threading.Thread(target=_us_poll_loop, daemon=True).start()
+    threading.Thread(target=_us_poll_loop, args=(ui,), daemon=True).start()
     threading.Thread(target=_system_health_loop, args=(ui,), daemon=True).start()
     log.info("Telemetry loop started.")
 

@@ -27,6 +27,7 @@ const imuGyro  = document.getElementById('imu-gyro');
 const usLeft   = document.getElementById('us-left');
 const usFront  = document.getElementById('us-front');
 const usRight  = document.getElementById('us-right');
+const usLast   = document.getElementById('us-last');
 
 const ekfX     = document.getElementById('ekf-x');
 const ekfY     = document.getElementById('ekf-y');
@@ -504,9 +505,18 @@ function updateUltrasonics(u) {
     if (usFront) usFront.textContent = fmt(u.front);
     if (usRight) usRight.textContent = fmt(u.right);
     if (usLeft)  usLeft.textContent  = fmt(u.left);
-    // Mirror to nav tab cam placeholder if needed
-    const frontWarn = u.front < 20;
-    if (usFront) usFront.style.color = frontWarn ? '#ff5252' : '#69f0ae';
+
+    [
+        [usFront, u.front],
+        [usRight, u.right],
+        [usLeft, u.left],
+    ].forEach(([el, val]) => {
+        if (!el) return;
+        const card = el.closest('.sonar-card');
+        if (card) card.classList.toggle('warning', val > 0 && val < 20);
+    });
+
+    if (usLast) usLast.textContent = new Date().toLocaleTimeString();
 }
 
 function updateEKF(e) {

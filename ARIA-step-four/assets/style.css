@@ -312,6 +312,66 @@ input[type=range]::-webkit-slider-runnable-track {
     font-family: "Roboto Mono", monospace;
 }
 
+.sonar-panel {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(90px, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.sonar-card {
+    background: #ECF1F1;
+    border: 2px solid #C9D2D2;
+    border-radius: 8px;
+    min-height: 106px;
+    padding: 12px 10px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.sonar-front {
+    border-color: #008184;
+}
+
+.sonar-label {
+    color: #6A7A7A;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+}
+
+.sonar-value {
+    color: #008184;
+    font-family: "Roboto Mono", monospace;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+}
+
+.sonar-card.warning {
+    border-color: #E85D5D;
+    background: #F7D9D9;
+}
+
+.sonar-card.warning .sonar-value {
+    color: #C62828;
+}
+
+.sonar-unit,
+.sonar-status {
+    color: #6A7A7A;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.sonar-status {
+    margin-top: 8px;
+    text-align: center;
+}
+
 .ekf-value {
     font-size: 22px;
     color: #008184;
@@ -372,4 +432,5 @@ input[type=range]::-webkit-slider-runnable-track {
     .arduino-logo { height: 16px; }
     .telemetry-grid { grid-template-columns: 1fr; }
     .telem-item.full { grid-column: 1; }
+    .sonar-panel { grid-template-columns: 1fr; }
 }
