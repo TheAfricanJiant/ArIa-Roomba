@@ -36,13 +36,14 @@
 #define MOTOR_R_INVERT true
 
 // ── Encoders ─────────────────────────────────────────────────────────────────
+// Fix (2026-05): ISRs read the actual phase-pin state at interrupt time rather
+// than relying on the dirL/dirR globals written by setMotors().  This gives the
+// correct sign during deceleration, back-EMF roll-back, or external pushes.
 volatile long encL = 0;
 volatile long encR = 0;
-volatile int8_t dirL = 1;
-volatile int8_t dirR = 1;
 
-void onEncL() { encL += dirL; }
-void onEncR() { encR += dirR; }
+void onEncL() { encL += (digitalRead(MOTOR_L_PH) == HIGH) ? 1 : -1; }
+void onEncR() { encR += (digitalRead(MOTOR_R_PH) == HIGH) ? 1 : -1; }
 
 // ── IMU ───────────────────────────────────────────────────────────────────────
 Adafruit_LSM6DSOX imu;
@@ -66,10 +67,7 @@ void setMotors(int l, int r) {
     if (MOTOR_L_INVERT) l = -l;
     if (MOTOR_R_INVERT) r = -r;
 
-    // Store direction for encoder sign (after inversion so encoders track real motion)
-    dirL = (l >= 0) ? 1 : -1;
-    dirR = (r >= 0) ? 1 : -1;
-
+    // Write phase pin first; ISRs now read the pin directly so no dirL/dirR needed.
     digitalWrite(MOTOR_L_PH, l >= 0 ? HIGH : LOW);
     digitalWrite(MOTOR_R_PH, r >= 0 ? HIGH : LOW);
     analogWrite(MOTOR_L_EN, abs(l));
@@ -79,7 +77,8 @@ void setMotors(int l, int r) {
 void stopMotors() {
     analogWrite(MOTOR_L_EN, 0);
     analogWrite(MOTOR_R_EN, 0);
-    dirL = 1; dirR = 1;
+    // Phase pins left in their last state so ISRs still sign ticks correctly
+    // during any brief coast after the enable goes low.
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────

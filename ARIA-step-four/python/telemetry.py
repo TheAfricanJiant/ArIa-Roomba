@@ -40,7 +40,11 @@ class SimpleDeadReckoning:
         d_l = delta_l * self.CM_PER_TICK
         d_r = delta_r * self.CM_PER_TICK
         d_c = (d_l + d_r) * 0.5
-        d_theta = gyro_z * dt                     # IMU-based rotation
+        # Fix #5 (2026-05): fuse encoder-derived rotation with gyro 50/50.
+        # Previously only gyro was used, so any gyro bias caused rapid drift.
+        d_theta_enc = (d_r - d_l) / self.WHEEL_BASE
+        d_theta_imu = gyro_z * dt
+        d_theta = 0.5 * d_theta_enc + 0.5 * d_theta_imu
         half = d_theta * 0.5
         self.theta = _wrap(self.theta + half)
         self.x += d_c * math.cos(self.theta)
@@ -195,7 +199,22 @@ def get_grid_snapshot() -> dict:
 
 
 def get_obstacle_snapshot() -> dict:
-    return _obs_grid.snapshot()
+    """Return the obstacle grid plus current robot pose and active goal."""
+    snap = _obs_grid.snapshot()
+    snap["robot"] = get_pose()   # Fix #3 (2026-05): nav canvas needs robot coords
+    # Expose the active goal if the navigator module is available
+    try:
+        import navigator as _nav_mod
+        # navigator module exposes a module-level nav object via main.py,
+        # but we avoid a circular import by checking the cached attribute.
+        _nav = getattr(_nav_mod, '_cached_nav', None)
+        if _nav and _nav.goal:
+            snap["goal"] = {"x_cm": _nav.goal[0], "y_cm": _nav.goal[1]}
+        else:
+            snap["goal"] = None
+    except Exception:
+        snap["goal"] = None
+    return snap
 
 
 def get_ultrasonics() -> dict:
@@ -286,6 +305,18 @@ def _run_pose_step():
             x, y, _ = ekf.pose
             if grid:
                 grid.mark_cleaned(x, y)
+
+            # Fix #6 (2026-05): wall-snap — eliminate lateral drift when robot
+            # is within US_WALL_SNAP_CM of a side wall.  We don't know the room
+            # dimensions exactly, so we snap the *offset* (not an absolute coord).
+            # The snap moves the EKF estimate to account for the measured wall gap.
+            us = get_ultrasonics()
+            snap_thresh = 8.0  # cm — must match US_WALL_SNAP_CM in config.py
+            if us["left"] <= snap_thresh and us["left"] > 0:
+                # Robot is flush-left: current x minus sensor gap = left boundary x
+                ekf.wall_snap("left", x - us["left"])
+            if us["right"] <= snap_thresh and us["right"] > 0:
+                ekf.wall_snap("right", x + us["right"])
         else:
             _dr.update(delta_l, delta_r, telemetry["gyro_z"], dt)
             x, y, _ = _dr.pose

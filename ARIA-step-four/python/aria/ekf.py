@@ -7,6 +7,11 @@ Measurements:  encoder deltas (predict) + IMU gyro Z (correct)
 Wall snap:     resets lateral drift when side ultrasonic detects a boundary
 
 Performance: ~0.05 ms per update on UNO Q Linux (Qualcomm MPU).
+
+Fix (2026-05): correct_imu() now integrates gyro_z into an independent
+_imu_theta accumulator (seeded once from the encoder heading).  This gives
+the Kalman filter a genuinely separate measurement so the innovation is
+non-trivial and the IMU actually corrects encoder drift.
 """
 
 import math
@@ -53,13 +58,15 @@ class ARIALocalization:
         # Observation noise R (IMU gyro Z)
         self._ekf.R = np.array([[EKF_OBS_NOISE_IMU]])
 
-        # Observation matrix H: we observe theta_dot ≈ d_theta/dt
-        # Updated each step from the non-linear prediction
+        # Observation matrix H: we observe theta directly
         self._ekf.H = np.array([[0.0, 0.0, 1.0]])
 
-        # Cache
-        self._last_enc_l: int = 0
-        self._last_enc_r: int = 0
+        # ── Independent IMU heading accumulator (Fix #1) ──────────────────────
+        # Seeded from start_theta on first call; updated every correct_imu tick.
+        # Kept separate from _ekf.x[2] so the EKF receives a genuinely
+        # independent measurement rather than confirming its own integral.
+        self._imu_theta: float = start_theta
+        self._imu_seeded: bool = True   # already seeded from start_theta
 
     # ── Public interface ─────────────────────────────────────────────────────
 
@@ -122,32 +129,35 @@ class ARIALocalization:
         EKF update step using IMU gyroscope Z-axis (yaw rate).
         Call after each predict().
 
+        Fix (2026-05): _imu_theta is an independent running integral of gyro_z
+        seeded from start_theta.  It is NOT derived from _ekf.x[2], so the
+        Kalman filter receives a measurement from a different source than its
+        own prediction — giving a non-trivial innovation that actually corrects
+        encoder heading drift.
+
         Args:
-            gyro_z: Angular velocity in rad/s from MPU6050
+            gyro_z: Angular velocity in rad/s from LSM6DSOX
             dt:     Time step in seconds (typically 0.05 s)
         """
-        # Expected angular change from gyro
-        z = np.array([[gyro_z * dt]])
+        # ── Step 1: advance the independent IMU heading accumulator ──────────
+        self._imu_theta = self._wrap_angle(self._imu_theta + gyro_z * dt)
 
-        # Innovation: difference between measured and predicted heading change
-        # (predicted change is already in x[2] after predict())
-        # We observe delta_theta directly from the gyro
+        # ── Step 2: use _imu_theta as the measurement z_obs ──────────────────
+        # This is independent of _ekf.x[2] which came from encoders in predict()
         self._ekf.H = np.array([[0.0, 0.0, 1.0]])
-        z_pred = np.array([[self._ekf.x[2, 0]]])  # predicted θ
-        # Map gyro to an absolute angle for the update
-        # Simple: use gyro-integrated angle as observation of theta
-        z_obs = np.array([[self._wrap_angle(z_pred[0, 0] + gyro_z * dt)]])
+        z_obs = np.array([[self._imu_theta]])
 
-        # Kalman gain
+        # ── Step 3: Kalman gain ───────────────────────────────────────────────
         S = self._ekf.H @ self._ekf.P @ self._ekf.H.T + self._ekf.R
         K = self._ekf.P @ self._ekf.H.T @ np.linalg.inv(S)
 
-        # Update state
-        innovation = z_obs - self._ekf.H @ self._ekf.x
-        self._ekf.x += K @ innovation
+        # ── Step 4: innovation (wrap to handle ±π boundary) ──────────────────
+        raw_innov = z_obs - self._ekf.H @ self._ekf.x
+        raw_innov[0, 0] = self._wrap_angle(raw_innov[0, 0])
+        self._ekf.x += K @ raw_innov
         self._ekf.x[2, 0] = self._wrap_angle(self._ekf.x[2, 0])
 
-        # Update covariance (Joseph form for numerical stability)
+        # ── Step 5: covariance update (Joseph form for numerical stability) ───
         I_KH = np.eye(3) - K @ self._ekf.H
         self._ekf.P = I_KH @ self._ekf.P @ I_KH.T + K @ self._ekf.R @ K.T
 
@@ -172,6 +182,8 @@ class ARIALocalization:
         """Full state reset (e.g. when returning to dock)."""
         self._ekf.x = np.array([[x], [y], [theta]], dtype=np.float64)
         self._ekf.P = np.diag([10.0, 10.0, 0.1])
+        # Also reset the IMU accumulator so it stays consistent with encoder
+        self._imu_theta = theta
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
