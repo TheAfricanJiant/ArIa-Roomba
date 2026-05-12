@@ -277,10 +277,11 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('pointercancel', stop);
         btn.addEventListener('lostpointercapture', stop);
     }
-    addMomentary(driveForwardBtn,  'forward');
-    addMomentary(driveBackwardBtn, 'backward');
-    addMomentary(driveLeftBtn,     'left');
-    addMomentary(driveRightBtn,    'right');
+    // UI labels are calibrated to the XRP chassis orientation observed on hardware.
+    addMomentary(driveForwardBtn,  'left');
+    addMomentary(driveBackwardBtn, 'right');
+    addMomentary(driveLeftBtn,     'forward');
+    addMomentary(driveRightBtn,    'backward');
     if (driveStopBtn) driveStopBtn.addEventListener('click', () => sendDrive('stop'));
 
     // ── Home / Reset Origin button ──

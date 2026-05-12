@@ -136,6 +136,95 @@ body {
 #motor-power-btn:hover { transform: scale(1.05); }
 #motor-power-btn:active { transform: scale(0.95); }
 
+.nav-drive-panel {
+    flex: 1 1 260px;
+    min-width: 260px;
+    background: #DAE3E3;
+    border-radius: 10px;
+    padding: 18px;
+}
+
+.drive-pad {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(70px, 88px));
+    grid-template-rows: repeat(3, minmax(70px, 88px));
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+    margin: 4px auto 14px;
+}
+
+.drive-btn {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px solid #C9D2D2;
+    background: #DAE3E3;
+    color: #2C353A;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    transition: all 0.2s ease;
+    touch-action: none;
+    box-shadow: 0 2px 4px rgba(44, 53, 58, 0.14);
+}
+
+.drive-btn:hover {
+    transform: scale(1.05);
+    border-color: #008184;
+}
+
+.drive-btn:active {
+    transform: scale(0.95);
+    background: #008184;
+    color: #ffffff;
+    border-color: #008184;
+    box-shadow: 0 0 16px rgba(0, 129, 132, 0.45);
+}
+
+.drive-forward { grid-column: 2; grid-row: 1; }
+.drive-left { grid-column: 1; grid-row: 2; }
+.drive-stop {
+    grid-column: 2;
+    grid-row: 2;
+    background: #E85D5D;
+    border-color: #D64848;
+    color: #ffffff;
+}
+.drive-right { grid-column: 3; grid-row: 2; }
+.drive-backward { grid-column: 2; grid-row: 3; }
+
+.nav-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.nav-action-btn {
+    border: 0;
+    border-radius: 8px;
+    background: #2C353A;
+    color: #ffffff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 14px;
+}
+
+.nav-action-primary {
+    background: #008184;
+}
+
+.nav-drive-note {
+    margin-top: 12px;
+    text-align: center;
+    font-size: 12px;
+}
+
 /* ── Speed Slider ────────────────────────────────────────────────────────── */
 .slider-section {
     margin: 24px auto;

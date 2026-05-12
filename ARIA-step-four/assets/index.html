@@ -47,28 +47,6 @@ SPDX-License-Identifier: MPL-2.0
                 </div>
 
                 <div class="telemetry-box" style="margin-top: 14px;">
-                    <h3 class="arduino-text section-title">Manual Drive</h3>
-                    <p class="instruction-text" style="margin-top: 2px; opacity: 0.85;">
-                        <strong>Hold</strong> to move — releases automatically when you let go.
-                    </p>
-                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                        <button id="drive-forward-btn" class="tab-btn" style="background:#4CAF50;color:white;min-width:120px;touch-action:none;">⬆️ Forward</button>
-                    </div>
-                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
-                        <button id="drive-left-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;touch-action:none;">⬅️ Left</button>
-                        <button id="drive-stop-btn" class="tab-btn" style="background:#e53935;color:white;min-width:120px;">🛑 Stop</button>
-                        <button id="drive-right-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;touch-action:none;">➡️ Right</button>
-                    </div>
-                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
-                        <button id="drive-backward-btn" class="tab-btn" style="background:#6d4c41;color:white;min-width:120px;touch-action:none;">⬇️ Back</button>
-                    </div>
-                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:12px;">
-                        <button id="home-btn" class="tab-btn" style="background:#1565C0;color:white;min-width:200px;">🏠 Set as Home (Reset Origin)</button>
-                        <button id="auto-clean-btn" class="tab-btn" style="background:#6a1b9a;color:white;min-width:160px;">🧹 Start Auto-Clean</button>
-                    </div>
-                </div>
-
-                <div class="telemetry-box" style="margin-top: 14px;">
                     <h3 class="arduino-text section-title">Vacuum &amp; Brush</h3>
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                         <button id="vacuum-toggle-btn" class="tab-btn" style="background:#008184;color:white;min-width:160px;">
@@ -276,6 +254,21 @@ SPDX-License-Identifier: MPL-2.0
         <!-- ══════════════ TAB: NAV (Obstacle Map + Mini Camera) ══════════════ -->
         <div class="tab-panel hidden" id="tab-nav">
             <div style="display:flex;gap:12px;flex-wrap:wrap;padding:12px;">
+                <div class="nav-drive-panel">
+                    <span class="arduino-text section-title">Manual Drive</span>
+                    <div class="drive-pad" aria-label="Manual robot drive controls">
+                        <button id="drive-forward-btn" class="drive-btn drive-forward" type="button">Forward</button>
+                        <button id="drive-left-btn" class="drive-btn drive-left" type="button">Left</button>
+                        <button id="drive-stop-btn" class="drive-btn drive-stop" type="button">Stop</button>
+                        <button id="drive-right-btn" class="drive-btn drive-right" type="button">Right</button>
+                        <button id="drive-backward-btn" class="drive-btn drive-backward" type="button">Back</button>
+                    </div>
+                    <div class="nav-actions">
+                        <button id="home-btn" class="nav-action-btn" type="button">Set Home</button>
+                        <button id="auto-clean-btn" class="nav-action-btn nav-action-primary" type="button">Start Auto-Clean</button>
+                    </div>
+                    <p class="instruction-text nav-drive-note"><strong>Hold</strong> a direction to move. Release to stop.</p>
+                </div>
                 <!-- Obstacle map -->
                 <div style="flex:2;min-width:280px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
