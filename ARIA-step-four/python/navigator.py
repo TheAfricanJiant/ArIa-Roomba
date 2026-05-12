@@ -10,38 +10,42 @@ _cached_nav = None
 
 
 class Navigator:
-    """EKF-feedback waypoint follower for a differential-drive robot."""
+    """EKF-feedback waypoint follower using the calibrated manual-drive basis."""
 
     def __init__(self):
         self.goal = None
         self.waypoints = []
-        self.base_speed = 140
+        self.base_speed = 80
         self.arrival_dist_cm = 18.0
         self.accept_dist_cm = 28.0
-        self.lookahead_cm = 25.0
-        self.slow_radius_cm = 100.0
-        self.min_drive_pwm = 48
-        self.max_drive_pwm = 190
-        self.min_turn_pwm = 32
-        self.max_turn_pwm = 115
-        self.close_radius_cm = 45.0
+        self.slow_radius_cm = 120.0
+        self.min_drive_pwm = 34
+        self.max_drive_pwm = 150
+        self.min_turn_pwm = 28
+        self.max_turn_pwm = 85
+        self.align_error_rad = math.radians(42)
+        self.close_radius_cm = 42.0
         self.progress_timeout_s = 2.8
         self.close_timeout_s = 4.0
         self._stall_since = 0.0
         self._last_distance = float("inf")
         self._last_progress_ts = time.monotonic()
         self._best_distance = float("inf")
-        self._turn_polarity = 1.0
+        self._last_abs_error = float("inf")
+        self._turn_polarity = -1.0
         self._debug = self._empty_debug("idle")
         global _cached_nav
         _cached_nav = self
+
+    def set_speed(self, speed: int):
+        self.base_speed = max(0, min(self.max_drive_pwm, int(speed)))
 
     def set_goal(self, x: float, y: float, speed: int):
         self.set_path([(x, y)], speed)
 
     def set_path(self, points: list, speed: int):
         self.waypoints = self._prepare_path(points)
-        self.base_speed = max(70, min(self.max_drive_pwm, int(speed)))
+        self.set_speed(speed)
         self._reset_progress()
         self._pop_next_goal()
         self._debug = self._empty_debug("planning")
@@ -82,6 +86,7 @@ class Navigator:
         self._last_distance = float("inf")
         self._last_progress_ts = time.monotonic()
         self._best_distance = float("inf")
+        self._last_abs_error = float("inf")
 
     def _pop_next_goal(self):
         if self.waypoints:
@@ -136,64 +141,69 @@ class Navigator:
             log.warning("Navigator: no progress; flipped steering polarity to %.0f.", self._turn_polarity)
         self._last_distance = final_distance
 
-        target = self._lookahead_target(current_x, current_y)
-        dx = target[0] - current_x
-        dy = target[1] - current_y
+        dx = self.goal[0] - current_x
+        dy = self.goal[1] - current_y
         heading_error = _wrap_angle(math.atan2(dy, dx) - current_theta)
+        abs_error = abs(heading_error)
 
-        drive_dir = 1.0
-        control_error = heading_error
-        if abs(heading_error) > math.radians(115):
-            drive_dir = -1.0
-            control_error = _wrap_angle(heading_error + math.pi)
+        if (
+            final_distance > self.close_radius_cm
+            and math.isfinite(self._last_abs_error)
+            and abs_error > self._last_abs_error + math.radians(10)
+        ):
+            self._turn_polarity *= -1.0
+            log.warning("Navigator: heading error grew; flipped steering polarity to %.0f.", self._turn_polarity)
+        self._last_abs_error = abs_error
 
-        abs_error = abs(control_error)
-        speed_scale = max(0.26, min(1.0, final_distance / self.slow_radius_cm))
-        heading_scale = max(0.28, math.cos(min(abs_error, math.radians(74))))
-        forward = drive_dir * int(self.base_speed * speed_scale * heading_scale)
+        if self.base_speed <= 0:
+            forward = 0.0
+            turn = 0.0
+            mode = "paused"
+        else:
+            speed_scale = max(0.30, min(1.0, final_distance / self.slow_radius_cm))
+            forward = self.base_speed * speed_scale
+            turn = self._turn_polarity * math.sin(heading_error) * min(
+                self.max_turn_pwm,
+                max(self.min_turn_pwm, self.base_speed * 0.65),
+            )
 
-        if abs(forward) < self.min_drive_pwm:
-            forward = math.copysign(self.min_drive_pwm, forward)
-        if final_distance < self.close_radius_cm:
-            forward = _clamp(forward, -62, 62)
+            if abs_error > self.align_error_rad and final_distance > self.close_radius_cm:
+                forward = 0.0
+                if 0 < abs(turn) < self.min_turn_pwm:
+                    turn = math.copysign(self.min_turn_pwm, turn)
+                mode = "turn-to-heading"
+            else:
+                if 0 < abs(forward) < self.min_drive_pwm:
+                    forward = self.min_drive_pwm
+                if final_distance < self.close_radius_cm:
+                    forward = min(forward, 54)
+                turn = _clamp(turn, -abs(forward) * 0.55, abs(forward) * 0.55)
+                mode = "drive-to-goal"
 
-        max_turn = min(self.max_turn_pwm, max(self.min_turn_pwm, int(self.base_speed * 0.7)))
-        turn = self._turn_polarity * math.sin(control_error) * max_turn
-        if 0 < abs(turn) < self.min_turn_pwm and abs_error > math.radians(8):
+        if 0 < abs(turn) < self.min_turn_pwm and mode == "turn-to-heading":
             turn = math.copysign(self.min_turn_pwm, turn)
-        if final_distance < self.close_radius_cm:
-            turn = _clamp(turn, -58, 58)
 
-        left = forward - turn
-        right = forward + turn
-        mode = "tracking" if drive_dir > 0 else "reverse-tracking"
-
-        left = _clamp(left, -self.max_drive_pwm, self.max_drive_pwm)
-        right = _clamp(right, -self.max_drive_pwm, self.max_drive_pwm)
+        # Manual-control basis:
+        #   forward > 0 -> motor(-forward, +forward)
+        #   turn    > 0 -> motor(+turn, +turn)
+        left = _clamp(turn - forward, -self.max_drive_pwm, self.max_drive_pwm)
+        right = _clamp(turn + forward, -self.max_drive_pwm, self.max_drive_pwm)
 
         self._debug = {
             "state": mode,
             "goal": {"x": round(self.goal[0], 1), "y": round(self.goal[1], 1)},
-            "target": {"x": round(target[0], 1), "y": round(target[1], 1)},
+            "target": {"x": round(self.goal[0], 1), "y": round(self.goal[1], 1)},
             "distance_cm": round(final_distance, 1),
             "heading_error_deg": round(math.degrees(heading_error), 1),
             "left_pwm": int(left),
             "right_pwm": int(right),
             "queued": len(self.waypoints),
-            "lookahead_cm": self.lookahead_cm,
+            "forward_pwm": int(forward),
+            "turn_pwm": int(turn),
             "turn_polarity": int(self._turn_polarity),
-            "mode": "ekf go-to-goal",
+            "mode": "manual-basis ekf go-to-goal",
         }
         return int(left), int(right), False
-
-    def _lookahead_target(self, current_x: float, current_y: float) -> tuple[float, float]:
-        candidates = [self.goal] + self.waypoints
-        target = self.goal
-        for point in candidates:
-            target = point
-            if self._distance_to_goal(current_x, current_y, point) >= self.lookahead_cm:
-                break
-        return target
 
     def _distance_to_goal(self, current_x: float, current_y: float, goal: tuple[float, float]) -> float:
         return math.hypot(goal[0] - current_x, goal[1] - current_y)
@@ -211,9 +221,10 @@ class Navigator:
             "left_pwm": 0,
             "right_pwm": 0,
             "queued": 0,
-            "lookahead_cm": self.lookahead_cm,
+            "forward_pwm": 0,
+            "turn_pwm": 0,
             "turn_polarity": int(self._turn_polarity),
-            "mode": "ekf go-to-goal",
+            "mode": "manual-basis ekf go-to-goal",
         }
 
 

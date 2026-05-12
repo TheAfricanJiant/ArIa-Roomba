@@ -202,8 +202,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     powerBtn.addEventListener('click', () => socket.emit('toggle_power', {}));
-    speedSlider.addEventListener('input',  (e) => { speedVal.textContent = e.target.value; });
-    speedSlider.addEventListener('change', (e) => socket.emit('set_speed', { speed: parseInt(e.target.value) }));
+    const emitSpeed = makeThrottledEmitter('set_speed', 'speed', 80);
+    speedSlider.addEventListener('input',  (e) => {
+        const speed = parseInt(e.target.value) || 0;
+        speedVal.textContent = speed.toString();
+        emitSpeed(speed);
+    });
+    speedSlider.addEventListener('change', (e) => emitSpeed(parseInt(e.target.value) || 0));
 
     function makeThrottledEmitter(eventName, key, delayMs = 50) {
         let timer = null;
@@ -265,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Momentary drive buttons (hold to move, release to stop) ──
     function sendDrive(action) {
-        const spd = parseInt(speedSlider ? speedSlider.value : '160') || 160;
+        const spd = parseInt(speedSlider ? speedSlider.value : '80') || 80;
         socket.emit('manual_drive', { action, speed: spd });
     }
     function addMomentary(btn, dir) {

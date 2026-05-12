@@ -63,7 +63,7 @@ telemetry.set_system_metrics_store(system_metrics_db)
 # ── Robot state ───────────────────────────────────────────────────────────────
 state = {
     "motors_on":  False,
-    "speed":       160,
+    "speed":       80,
     "navigating":  False,
     "mode":        "manual",
     "vacuum":      0,    # 0-255 PWM
@@ -750,7 +750,8 @@ def toggle_power(client, data):
     ui.send_message("state_update", state)
 
 def set_speed(client, data):
-    state["speed"] = data.get("speed", 160)
+    state["speed"] = max(0, min(255, int(data.get("speed", 80))))
+    nav.set_speed(state["speed"])
     ui.send_message("state_update", state)
 
 def on_get_initial_state(client, data):
@@ -876,12 +877,12 @@ def navigation_loop():
 
             # ── Manual nav mode: simple P-controller with EKF feedback ──
             elif state["navigating"] and state["motors_on"]:
+                nav.set_speed(state["speed"])
                 l, r, arrived = nav.step(
                     pose["x_cm"], pose["y_cm"], pose["theta_rad"]
                 )
-                # Manual UI calibration shows this XRP wiring treats canonical
-                # forward (left=+, right=+) as hardware (-left, right).
-                motor.send_motor_cmd(-l, r)
+                # Navigator already outputs the calibrated manual-drive motor basis.
+                motor.send_motor_cmd(l, r)
 
                 now = time.time()
                 if now - last_nav_status > 0.25:
