@@ -19,6 +19,8 @@
 
  - The file xrp-Brute.cpp helps find the address of you IMU on the internal i2C bus in the XRP controller.  Please create a copy of the XRW platform.io project folder, and replace the main.cpp code in it with the code in xrp-Brute.cpp. Run it with your serial monitor open
 
+- ARIA-step-four now gates EKF wheel odometry with IMU checks. Encoder ticks update `x/y` only when the accelerometer and gyroscope say the robot is in a trustworthy floor-contact state. The Control tab also shows wheel cm/s, acceleration norm, tilt, and the Odometry Gate state. XRP encoder scale is set to 585 counts/rev.
+
 # Edge Impulse 
 ## Data Collection — Vacuum Sound Classifier
 ### Overview

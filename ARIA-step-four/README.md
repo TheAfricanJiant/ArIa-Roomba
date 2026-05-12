@@ -121,7 +121,7 @@ The web UI has five tabs:
 
 | Tab | What it shows |
 |---|---|
-| ⚙️ **Control** | Motor on/off toggle, speed slider, live IMU + encoder data |
+| ⚙️ **Control** | Motor on/off toggle, speed slider, live IMU, encoder, wheel-speed, and odometry-gate data |
 | 🗺️ **Map** | Interactive occupancy grid — click to set waypoints, draw clean zones |
 | 📐 **Pose** | Real-time EKF position (X, Y, θ) and distance from origin |
 | **System** | Live, 1-hour, and 1-day CPU/memory resource charts |
@@ -229,6 +229,76 @@ serial_bridge.py ──► telemetry.py (EKF + occupancy grid)
     ├──► ui.send_message("map_update")  ──► Map tab live render
     └──► navigator.py step() ──► motor.py ──► motors move
 ```
+
+---
+
+## EKF, IMU, and Odometry Validity
+
+ARIA uses a 3-state differential-drive EKF:
+
+```text
+state = [x_cm, y_cm, theta_rad]
+```
+
+The prediction step uses wheel encoder deltas with midpoint differential-drive odometry:
+
+```text
+d_l = left_ticks  * cm_per_tick
+d_r = right_ticks * cm_per_tick
+d_c = (d_l + d_r) / 2
+d_theta = (d_r - d_l) / wheel_base
+
+x     += d_c * cos(theta + d_theta / 2)
+y     += d_c * sin(theta + d_theta / 2)
+theta += d_theta
+```
+
+The correction step uses the IMU gyroscope Z axis as an independent heading observation. The accelerometer is not double-integrated into position, because small accelerometer bias quickly turns into large position drift. Instead, ARIA uses the accelerometer for deciding whether wheel odometry is trustworthy.
+
+### Odometry Gate
+
+`telemetry.py` computes an odometry validity gate before encoder deltas reach the EKF position prediction. The gate uses:
+
+- acceleration magnitude compared with gravity
+- tilt estimate from `accel_x`, `accel_y`, and `accel_z`
+- roll/pitch gyroscope activity
+- encoder-vs-gyro yaw disagreement
+
+When the robot is lifted, handled, sharply tilted, or the encoders claim a turn that the gyro does not see, ARIA marks wheel odometry invalid. In that state:
+
+- encoder deltas are rejected for `x/y` position updates
+- gyro heading correction may still run
+- autonomous waypoint motors pause until odometry becomes valid again
+- the UI shows the reason in **Odometry Gate**
+
+This prevents the trajectory from walking across the map just because the wheels spin while the robot is in the air.
+
+### XRP Constants
+
+The XRP constants used by ARIA are:
+
+```text
+wheel diameter: 6.0 cm
+track width:    15.5 cm
+encoder counts: 585 counts/rev
+```
+
+Earlier versions used `360` ticks/rev, which made distance estimates too large. The current value is `585`, so encoder distance is:
+
+```text
+cm_per_tick = pi * 6.0 / 585
+```
+
+### Dashboard Fields
+
+The Control tab shows:
+
+- `Wheel L` and `Wheel R`: current wheel speeds in cm/s from encoder deltas
+- `Accel Norm`: total accelerometer magnitude; near `9.81 m/s^2` when resting under gravity
+- `Tilt`: estimated chassis tilt from the accelerometer
+- `Odometry Gate`: `valid`, `stationary`, or a rejection reason such as `rejecting-wheel-odom:tilted`
+
+If the robot is on the floor and driving normally, the gate should be `valid`. If you pick it up, tilt it, or spin wheels in the air, it should switch to a rejection state and freeze map translation.
 
 ---
 

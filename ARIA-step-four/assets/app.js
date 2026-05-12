@@ -29,6 +29,11 @@ const navStatusTarget  = document.getElementById('nav-status-target');
 
 const encL     = document.getElementById('enc-l');
 const encR     = document.getElementById('enc-r');
+const wheelLCms = document.getElementById('wheel-l-cms');
+const wheelRCms = document.getElementById('wheel-r-cms');
+const accelNorm = document.getElementById('accel-norm');
+const tiltDeg   = document.getElementById('tilt-deg');
+const odomStatus = document.getElementById('odom-status');
 const imuAccel = document.getElementById('imu-accel');
 const imuGyro  = document.getElementById('imu-gyro');
 const usLeft   = document.getElementById('us-left');
@@ -509,6 +514,14 @@ function updateUI(state) {
 function updateTelemetry(data) {
     if (encL) encL.textContent     = data.enc_l;
     if (encR) encR.textContent     = data.enc_r;
+    if (wheelLCms) wheelLCms.textContent = `${Number(data.wheel_l_cm_s || 0).toFixed(1)} cm/s`;
+    if (wheelRCms) wheelRCms.textContent = `${Number(data.wheel_r_cm_s || 0).toFixed(1)} cm/s`;
+    if (accelNorm) accelNorm.textContent = `${Number(data.accel_norm || 0).toFixed(2)} m/s^2`;
+    if (tiltDeg) tiltDeg.textContent = `${Number(data.tilt_deg || 0).toFixed(1)} deg`;
+    if (odomStatus) {
+        odomStatus.textContent = data.odom_status || 'unknown';
+        odomStatus.style.color = data.odom_valid === false ? '#e53935' : '#008184';
+    }
     if (imuAccel) imuAccel.textContent = `X: ${data.accel_x.toFixed(2)} | Y: ${data.accel_y.toFixed(2)} | Z: ${data.accel_z.toFixed(2)}`;
     if (imuGyro)  imuGyro.textContent  = `X: ${data.gyro_x.toFixed(2)} | Y: ${data.gyro_y.toFixed(2)} | Z: ${data.gyro_z.toFixed(2)}`;
 }

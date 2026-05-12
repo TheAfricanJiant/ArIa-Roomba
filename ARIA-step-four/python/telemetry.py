@@ -34,6 +34,20 @@ US_POLL_INTERVAL_S      = 0.2   # poll UNO Q ultrasonics every 200ms
 US_MAX_VALID_CM         = 380.0
 MAP_PUSH_INTERVAL_S     = 1.0
 
+WHEEL_BASE_CM       = 15.5
+WHEEL_DIAMETER_CM   = 6.0
+TICKS_PER_REV       = 585
+CM_PER_TICK         = (math.pi * WHEEL_DIAMETER_CM) / TICKS_PER_REV
+GRAVITY_MPS2        = 9.80665
+
+# Use accelerometer and roll/pitch gyro cues to reject wheel odometry when the
+# robot is lifted, handled, tilted, or otherwise not in reliable floor contact.
+ACCEL_NORM_MIN      = 6.5
+ACCEL_NORM_MAX      = 13.2
+MAX_TILT_DEG        = 38.0
+HANDLED_GYRO_XY     = 0.55
+ODOM_INVALID_HOLD_S = 1.6
+
 # XRW reports raw encoder counts as T,encL,encR,...
 # On this robot the left wheel is wired to the XRP Motor 4 port, and a
 # hand-forward turn makes its raw count decrease.  ARIA's odometry expects
@@ -46,8 +60,8 @@ ENCODER_R_SIGN          = 1
 # ── Simple dead-reckoning fallback (no dependencies) ─────────────────────────
 class SimpleDeadReckoning:
     """Minimal encoder+gyro pose tracker. No filterpy required."""
-    CM_PER_TICK = (math.pi * 6.0) / 360   # XRP: 6 cm wheel, 360 ticks/rev
-    WHEEL_BASE  = 15.5                     # XRP track width cm
+    CM_PER_TICK = CM_PER_TICK
+    WHEEL_BASE  = WHEEL_BASE_CM
 
     def __init__(self):
         self.x = 0.0; self.y = 0.0; self.theta = 0.0
@@ -181,6 +195,12 @@ telemetry = {
     "enc_l": 0, "enc_r": 0,
     "accel_x": 0.0, "accel_y": 0.0, "accel_z": 0.0,
     "gyro_x":  0.0, "gyro_y": 0.0,  "gyro_z":  0.0,
+    "enc_l_rate": 0.0, "enc_r_rate": 0.0,
+    "wheel_l_cm_s": 0.0, "wheel_r_cm_s": 0.0,
+    "accel_norm": GRAVITY_MPS2,
+    "tilt_deg": 0.0,
+    "odom_valid": True,
+    "odom_status": "init",
     "us_front": 999.0, "us_right": 999.0, "us_left": 999.0,
 }
 
@@ -189,6 +209,7 @@ _last_enc_r:    int   = 0
 _last_ts:       float = time.time()
 _last_map_push: float = 0.0
 _stationary_count: int = 0   # consecutive ticks with no motion
+_odom_invalid_until: float = 0.0
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -241,14 +262,32 @@ def get_ultrasonics() -> dict:
     }
 
 
+def get_motion_status() -> dict:
+    return {
+        "odom_valid": telemetry["odom_valid"],
+        "odom_status": telemetry["odom_status"],
+        "wheel_l_cm_s": telemetry["wheel_l_cm_s"],
+        "wheel_r_cm_s": telemetry["wheel_r_cm_s"],
+        "accel_norm": telemetry["accel_norm"],
+        "tilt_deg": telemetry["tilt_deg"],
+    }
+
+
 def reset_encoders():
     """Zero encoder counts in XRW firmware and reset local pose estimate."""
-    global _last_enc_l, _last_enc_r
+    global _last_enc_l, _last_enc_r, _odom_invalid_until
     serial_bridge.send("R\n")
     _last_enc_l = 0
     _last_enc_r = 0
+    _odom_invalid_until = 0.0
     telemetry["enc_l"] = 0
     telemetry["enc_r"] = 0
+    telemetry["enc_l_rate"] = 0.0
+    telemetry["enc_r_rate"] = 0.0
+    telemetry["wheel_l_cm_s"] = 0.0
+    telemetry["wheel_r_cm_s"] = 0.0
+    telemetry["odom_valid"] = True
+    telemetry["odom_status"] = "reset"
     _dr.reset()
     if ekf:
         ekf.reset(0.0, 0.0, ekf.theta_rad)  # keep heading, reset position
@@ -295,6 +334,56 @@ def _is_stationary(delta_l, delta_r) -> bool:
     return _stationary_count >= 2   # must be still for 2+ consecutive ticks
 
 
+def _update_motion_status(delta_l: int, delta_r: int, dt: float, now: float) -> bool:
+    """Update wheel-rate/IMU status and return whether encoder odometry is valid."""
+    global _odom_invalid_until
+
+    dt = max(dt, 1e-6)
+    telemetry["enc_l_rate"] = round(delta_l / dt, 1)
+    telemetry["enc_r_rate"] = round(delta_r / dt, 1)
+    telemetry["wheel_l_cm_s"] = round((delta_l * CM_PER_TICK) / dt, 2)
+    telemetry["wheel_r_cm_s"] = round((delta_r * CM_PER_TICK) / dt, 2)
+
+    ax = telemetry["accel_x"]
+    ay = telemetry["accel_y"]
+    az = telemetry["accel_z"]
+    gx = telemetry["gyro_x"]
+    gy = telemetry["gyro_y"]
+    gz = telemetry["gyro_z"]
+
+    accel_xy = math.hypot(ax, ay)
+    accel_norm = math.sqrt(ax * ax + ay * ay + az * az)
+    tilt_deg = math.degrees(math.atan2(accel_xy, max(abs(az), 1e-6)))
+    gyro_xy = math.hypot(gx, gy)
+
+    telemetry["accel_norm"] = round(accel_norm, 2)
+    telemetry["tilt_deg"] = round(tilt_deg, 1)
+
+    reasons = []
+    if accel_norm < ACCEL_NORM_MIN or accel_norm > ACCEL_NORM_MAX:
+        reasons.append("accel-not-1g")
+    if tilt_deg > MAX_TILT_DEG:
+        reasons.append("tilted")
+    if gyro_xy > HANDLED_GYRO_XY:
+        reasons.append("handled")
+    dtheta_enc = ((delta_r - delta_l) * CM_PER_TICK) / WHEEL_BASE_CM
+    dtheta_imu = gz * dt
+    if abs(dtheta_enc) > 0.12 and abs(dtheta_imu) < 0.03:
+        reasons.append("encoder-gyro-disagree")
+
+    if reasons:
+        _odom_invalid_until = max(_odom_invalid_until, now + ODOM_INVALID_HOLD_S)
+
+    if now < _odom_invalid_until:
+        telemetry["odom_valid"] = False
+        telemetry["odom_status"] = "rejecting-wheel-odom:" + (reasons[0] if reasons else "hold")
+        return False
+
+    telemetry["odom_valid"] = True
+    telemetry["odom_status"] = "valid"
+    return True
+
+
 # ── Pose update step ──────────────────────────────────────────────────────────
 def _run_pose_step():
     global _last_enc_l, _last_enc_r, _last_ts
@@ -308,13 +397,17 @@ def _run_pose_step():
     _last_enc_l = telemetry["enc_l"]
     _last_enc_r = telemetry["enc_r"]
 
+    odom_valid = _update_motion_status(delta_l, delta_r, dt, now)
+
     # Skip update if robot is stationary (prevents EKF drift)
     if _is_stationary(delta_l, delta_r):
+        telemetry["odom_valid"] = True
+        telemetry["odom_status"] = "stationary"
         return
 
     try:
         if _EKF_AVAILABLE and ekf:
-            if delta_l != 0 or delta_r != 0:
+            if odom_valid and (delta_l != 0 or delta_r != 0):
                 ekf.predict(delta_l, delta_r)
             if dt > 0:
                 ekf.correct_imu(telemetry["gyro_z"], dt)
@@ -334,7 +427,10 @@ def _run_pose_step():
             if us["right"] <= snap_thresh and us["right"] > 0:
                 ekf.wall_snap("right", x + us["right"])
         else:
-            _dr.update(delta_l, delta_r, telemetry["gyro_z"], dt)
+            if odom_valid:
+                _dr.update(delta_l, delta_r, telemetry["gyro_z"], dt)
+            else:
+                _dr.update(0, 0, telemetry["gyro_z"], dt)
             x, y, _ = _dr.pose
             _sgrid.mark_cleaned(x, y)
 
