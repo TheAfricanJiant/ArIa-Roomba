@@ -21,6 +21,12 @@ import serial_bridge
 
 log = logging.getLogger(__name__)
 
+_system_metrics_db = None
+
+def set_system_metrics_store(db):
+    global _system_metrics_db
+    _system_metrics_db = db
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 STATIONARY_ACCEL_THRESH = 0.3   # m/s²  (XY plane)
 STATIONARY_GYRO_THRESH  = 0.04  # rad/s
@@ -75,7 +81,7 @@ def _wrap(a):
 
 # ── Simple grid tracker (no numpy) ───────────────────────────────────────────
 class SimpleGrid:
-    CELL_CM = 30; SIZE = 33; ORIGIN = 16
+    CELL_CM = 15; SIZE = 67; ORIGIN = 33
     UNKNOWN = 127; CLEANED = 0
 
     def __init__(self):
@@ -112,7 +118,7 @@ class SimpleGrid:
 # ── Obstacle grid for nav map ─────────────────────────────────────────────────
 class ObstacleGrid:
     """Separate grid updated by ultrasonic readings for the Nav map tab."""
-    CELL_CM = 30; SIZE = 33; ORIGIN = 16
+    CELL_CM = 15; SIZE = 67; ORIGIN = 33
 
     def __init__(self):
         # 0 = unknown, 1-100 = obstacle probability %
@@ -151,8 +157,8 @@ class ObstacleGrid:
 _EKF_AVAILABLE = False
 ekf = None
 grid = None
-CELL_SIZE_CM = 30; GRID_COLS = 33; GRID_ROWS = 33
-GRID_ORIGIN_ROW = 16; GRID_ORIGIN_COL = 16
+CELL_SIZE_CM = 15; GRID_COLS = 67; GRID_ROWS = 67
+GRID_ORIGIN_ROW = 33; GRID_ORIGIN_COL = 33
 
 _dr     = SimpleDeadReckoning()
 _sgrid  = SimpleGrid()
@@ -349,6 +355,9 @@ def _system_health_loop(ui):
             ts = int(time.time() * 1000)
             cpu_percent = psutil.cpu_percent(interval=1)
             mem_percent = psutil.virtual_memory().percent
+            if _system_metrics_db is not None:
+                _system_metrics_db.write_sample('cpu', cpu_percent, ts)
+                _system_metrics_db.write_sample('mem', mem_percent, ts)
             ui.send_message('cpu_usage', {"value": cpu_percent, "ts": ts})
             ui.send_message('memory_usage', {"value": mem_percent, "ts": ts})
         except Exception as e:

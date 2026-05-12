@@ -5,6 +5,7 @@
 from arduino.app_bricks.telegram_bot import TelegramBot, Sender, Message
 from arduino.app_bricks.object_detection import ObjectDetection
 from arduino.app_bricks.mood_detector import MoodDetector
+from arduino.app_bricks.dbstorage_tsstore import TimeSeriesStore
 from arduino.app_bricks.web_ui import WebUI
 from arduino.app_utils import App, Leds, Bridge
 from PIL import Image
@@ -42,8 +43,22 @@ bot            = TelegramBot()
 obj_detection  = ObjectDetection()
 mood           = MoodDetector()
 ui             = WebUI()
+system_metrics_db = TimeSeriesStore()
 detection_stream = VideoObjectDetection(confidence=0.5, debounce_sec=0.0)
 camera.register_stream(detection_stream)
+
+def on_get_samples(resource: str, start: str, aggr_window: str):
+    samples = system_metrics_db.read_samples(
+        measure=resource,
+        start_from=start,
+        aggr_window=aggr_window,
+        aggr_func="mean",
+        limit=100,
+    )
+    return [{"ts": sample[1], "value": sample[2]} for sample in samples]
+
+ui.expose_api("GET", "/get_samples/{resource}/{start}/{aggr_window}", on_get_samples)
+telemetry.set_system_metrics_store(system_metrics_db)
 
 # ── Robot state ───────────────────────────────────────────────────────────────
 state = {
@@ -384,12 +399,36 @@ def cancelpath_cmd(sender: Sender, message: Message):
 # CLEANING
 # ══════════════════════════════════════════════════════════════════════════════
 def _run_clean_zone(x_min, y_min, x_max, y_max):
-    path = []
-    path += [(x_min,y_min),(x_max,y_min),(x_max,y_max),(x_min,y_max),(x_min,y_min)]
-    lane = 20.0; y = y_min + lane/2; right = True
+    width = abs(x_max - x_min)
+    height = abs(y_max - y_min)
+    if width < 10 or height < 10:
+        log.warning("Ignoring tiny clean zone %.1fx%.1f cm", width, height)
+        return
+
+    pose = telemetry.get_pose()
+    lane = 15.0
+    lanes = []
+    y = y_min + lane / 2
     while y <= y_max:
-        path += [(x_min,y),(x_max,y)] if right else [(x_max,y),(x_min,y)]
-        y += lane; right = not right
+        lanes.append(((x_min, y), (x_max, y)))
+        y += lane
+    if not lanes:
+        lanes.append(((x_min, (y_min + y_max) / 2), (x_max, (y_min + y_max) / 2)))
+
+    candidates = []
+    for reverse_y in (False, True):
+        ordered = list(reversed(lanes)) if reverse_y else lanes
+        for start_right in (False, True):
+            pts = []
+            right = start_right
+            for left_pt, right_pt in ordered:
+                pts.extend([right_pt, left_pt] if right else [left_pt, right_pt])
+                right = not right
+            first = pts[0]
+            dist = math.hypot(first[0] - pose["x_cm"], first[1] - pose["y_cm"])
+            candidates.append((dist, pts))
+
+    path = min(candidates, key=lambda item: item[0])[1]
     nav.set_path(path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)

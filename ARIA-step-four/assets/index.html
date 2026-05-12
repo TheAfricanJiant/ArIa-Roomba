@@ -10,6 +10,7 @@ SPDX-License-Identifier: MPL-2.0
     <title>ARIA — Step Four Dashboard</title>
     <link rel="icon" type="image/png" href="./img/favicon.png">
     <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="page-wrapper">
@@ -26,6 +27,7 @@ SPDX-License-Identifier: MPL-2.0
             <button class="tab-btn" id="tab-map-btn" onclick="switchTab('map')">🗺️ Trajectory</button>
             <button class="tab-btn" id="tab-nav-btn" onclick="switchTab('nav')">🧭 Nav</button>
             <button class="tab-btn" id="tab-pose-btn" onclick="switchTab('pose')">📐 Pose</button>
+            <button class="tab-btn" id="tab-system-btn" onclick="switchTab('system')">System</button>
             <button class="tab-btn" id="tab-camera-btn" onclick="switchTab('camera')">📷 Camera</button>
         </nav>
 
@@ -185,6 +187,106 @@ SPDX-License-Identifier: MPL-2.0
                         <div class="telem-item full">
                             <span class="telem-label">Memory Usage (%)</span>
                             <span class="telem-value" id="sys-mem">0.0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-panel hidden" id="tab-system">
+            <div class="container system-logger-container">
+                <div class="system-tabs" role="tablist" aria-label="System resource history">
+                    <button class="system-tab" data-system-tab="system-1d" type="button">1 D</button>
+                    <button class="system-tab" data-system-tab="system-1h" type="button">1 h</button>
+                    <button class="system-tab active" data-system-tab="system-live" type="button">
+                        <span id="system-live-circle"></span>
+                        Live
+                    </button>
+                </div>
+
+                <div id="system-1d" class="system-tab-content">
+                    <div class="system-chart-grid">
+                        <div class="system-chart-card">
+                            <div class="system-chart-header">
+                                <span>CPU Usage (%)</span>
+                                <img src="./img/info.svg" alt="Info" class="system-info-btn cpu">
+                                <div class="system-popover"></div>
+                            </div>
+                            <canvas id="cpu-usage-1d-chart"></canvas>
+                            <div id="cpu-usage-1d-chart-nodata" class="system-nodata">
+                                <img src="./img/nodata.svg" alt="" class="system-nodata-img">
+                                <span>No data</span>
+                            </div>
+                        </div>
+                        <div class="system-chart-card">
+                            <div class="system-chart-header">
+                                <span>Memory Usage (%)</span>
+                                <img src="./img/info.svg" alt="Info" class="system-info-btn memory">
+                                <div class="system-popover"></div>
+                            </div>
+                            <canvas id="memory-usage-1d-chart"></canvas>
+                            <div id="memory-usage-1d-chart-nodata" class="system-nodata">
+                                <img src="./img/nodata.svg" alt="" class="system-nodata-img">
+                                <span>No data</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="system-1h" class="system-tab-content">
+                    <div class="system-chart-grid">
+                        <div class="system-chart-card">
+                            <div class="system-chart-header">
+                                <span>CPU Usage (%)</span>
+                                <img src="./img/info.svg" alt="Info" class="system-info-btn cpu">
+                                <div class="system-popover"></div>
+                            </div>
+                            <canvas id="cpu-usage-1h-chart"></canvas>
+                            <div id="cpu-usage-1h-chart-nodata" class="system-nodata">
+                                <img src="./img/nodata.svg" alt="" class="system-nodata-img">
+                                <span>No data</span>
+                            </div>
+                        </div>
+                        <div class="system-chart-card">
+                            <div class="system-chart-header">
+                                <span>Memory Usage (%)</span>
+                                <img src="./img/info.svg" alt="Info" class="system-info-btn memory">
+                                <div class="system-popover"></div>
+                            </div>
+                            <canvas id="memory-usage-1h-chart"></canvas>
+                            <div id="memory-usage-1h-chart-nodata" class="system-nodata">
+                                <img src="./img/nodata.svg" alt="" class="system-nodata-img">
+                                <span>No data</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="system-live" class="system-tab-content active">
+                    <div class="system-chart-grid">
+                        <div class="system-chart-card">
+                            <div class="system-chart-header">
+                                <span>CPU Usage (%)</span>
+                                <img src="./img/info.svg" alt="Info" class="system-info-btn cpu">
+                                <div class="system-popover"></div>
+                            </div>
+                            <canvas id="cpu-usage-live-chart"></canvas>
+                            <div id="cpu-usage-live-chart-nodata" class="system-nodata">
+                                <img src="./img/nodata.svg" alt="" class="system-nodata-img">
+                                <span>No data</span>
+                            </div>
+                        </div>
+                        <div class="system-chart-card">
+                            <div class="system-chart-header">
+                                <span>Memory Usage (%)</span>
+                                <img src="./img/info.svg" alt="Info" class="system-info-btn memory">
+                                <div class="system-popover"></div>
+                            </div>
+                            <canvas id="memory-usage-live-chart"></canvas>
+                            <div id="memory-usage-live-chart-nodata" class="system-nodata">
+                                <img src="./img/nodata.svg" alt="" class="system-nodata-img">
+                                <span>No data</span>
+                            </div>
                         </div>
                     </div>
                 </div>

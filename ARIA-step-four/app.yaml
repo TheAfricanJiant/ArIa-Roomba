@@ -6,6 +6,7 @@ description: >
   live USB camera detection, and AI object detection into a single app.
 
 bricks:
+  - arduino:dbstorage_tsstore
   - arduino:web_ui
   - arduino:telegram_bot
   - arduino:object_detection

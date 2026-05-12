@@ -55,6 +55,7 @@ ARIA Step Four is the integration of three prior projects into one cohesive app:
 | Brick | Purpose |
 |---|---|
 | `arduino:web_ui` | Serves the real-time web dashboard at `:7000` |
+| `arduino:dbstorage_tsstore` | Stores CPU and memory samples for historical system-resource charts |
 | `arduino:telegram_bot` | Full Telegram bot remote control interface |
 | `arduino:object_detection` | AI object detection on uploaded images |
 | `arduino:mood_detector` | Sentiment analysis for Telegram text messages |
@@ -116,13 +117,14 @@ Click **Run** in Arduino App Lab. The app will:
 
 ## Web Dashboard
 
-The web UI has four tabs:
+The web UI has five tabs:
 
 | Tab | What it shows |
 |---|---|
 | ⚙️ **Control** | Motor on/off toggle, speed slider, live IMU + encoder data |
 | 🗺️ **Map** | Interactive occupancy grid — click to set waypoints, draw clean zones |
 | 📐 **Pose** | Real-time EKF position (X, Y, θ) and distance from origin |
+| **System** | Live, 1-hour, and 1-day CPU/memory resource charts |
 | 📷 **Camera** | Live annotated camera stream, snapshot, upload + detect, detections log |
 
 ---
@@ -327,12 +329,12 @@ The LED Matrix Painter relies on a synchronized data flow between the browser, t
 
 ### System Resources Logger
 
-The **System Resources Logger** monitors and displays real-time system performance data from your Arduino UNO Q board. It tracks CPU and memory usage and provides a web-based dashboard with live charts.
+The **System Resources Logger** monitors and displays system performance data from your Arduino UNO Q board. It tracks CPU and memory usage, writes samples to a time-series database, and exposes live, 1-hour, and 1-day charts in the ARIA System tab.
 
 ![System Resources Logger](assets/docs_assets/system-resource-log.png)
 
 #### Description
-The application continuously monitors system performance using the `psutil` library to collect CPU and memory usage statistics. Data is streamed in real-time to a web interface. 
+The application continuously monitors system performance using the `psutil` library to collect CPU and memory usage statistics every 5 seconds. Data is streamed in real time to the web interface and stored through the `arduino:dbstorage_tsstore` brick for historical aggregation.
 
 #### How it Works
 The application uses the `psutil` library to gather system metrics:
@@ -341,7 +343,7 @@ The application uses the `psutil` library to gather system metrics:
  cpu_percent = psutil.cpu_percent(interval=1)
  mem_percent = psutil.virtual_memory().percent
 ```
-Data collection runs in a separate thread, sampling system resources to provide constant monitoring without blocking the web interface. The `web_ui` Brick provides WebSocket communication for live updates.
+Data collection runs in a separate thread, sampling system resources to provide constant monitoring without blocking the web interface. The `web_ui` Brick provides WebSocket communication for live updates, while `/get_samples/{resource}/{start}/{aggr_window}` serves aggregated historical samples to the browser charts.
 
 ---
 

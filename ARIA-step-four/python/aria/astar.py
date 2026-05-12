@@ -27,14 +27,14 @@ from .occupancy_grid import OccupancyGrid
 def _world_to_cell(x_cm: float, y_cm: float,
                    rows: int, cols: int) -> tuple[int, int]:
     col = int(x_cm / CELL_SIZE_CM) + GRID_ORIGIN_COL
-    row = int(y_cm / CELL_SIZE_CM) + GRID_ORIGIN_ROW
+    row = GRID_ORIGIN_ROW - int(y_cm / CELL_SIZE_CM)
     return (max(0, min(rows - 1, row)),
             max(0, min(cols - 1, col)))
 
 
 def _cell_to_world(row: int, col: int) -> tuple[float, float]:
     x = (col - GRID_ORIGIN_COL) * CELL_SIZE_CM + CELL_SIZE_CM / 2
-    y = (row - GRID_ORIGIN_ROW) * CELL_SIZE_CM + CELL_SIZE_CM / 2
+    y = (GRID_ORIGIN_ROW - row) * CELL_SIZE_CM - CELL_SIZE_CM / 2
     return x, y
 
 

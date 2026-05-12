@@ -13,12 +13,12 @@ TICKS_PER_REV       = 360       # Encoder pulses per full wheel revolution
 CM_PER_TICK         = WHEEL_CIRCUMFERENCE / TICKS_PER_REV
 
 # ── Occupancy grid ───────────────────────────────────────────────────────────
-CELL_SIZE_CM        = 30        # Each grid cell = 30 cm × 30 cm
+CELL_SIZE_CM        = 15        # Each grid cell = 15 cm x 15 cm
 GRID_WIDTH_CM       = 1000      # Max room width  (10 m)
 GRID_HEIGHT_CM      = 1000      # Max room height (10 m)
-GRID_COLS           = GRID_WIDTH_CM  // CELL_SIZE_CM   # 33 cols
-GRID_ROWS           = GRID_HEIGHT_CM // CELL_SIZE_CM   # 33 rows
-# Robot starts at grid centre (col 16, row 16 = 0,0 in robot coords)
+GRID_COLS           = math.ceil(GRID_WIDTH_CM / CELL_SIZE_CM)
+GRID_ROWS           = math.ceil(GRID_HEIGHT_CM / CELL_SIZE_CM)
+# Robot starts at grid centre.
 GRID_ORIGIN_COL     = GRID_COLS // 2
 GRID_ORIGIN_ROW     = GRID_ROWS // 2
 

@@ -567,12 +567,12 @@ function renderMap(m) {
 
 function _drawMap(m) {
     // m can be null on first render â€” draw background/trajectory/robot without grid
-    const cols       = m ? m.cols       : 33;
-    const rows       = m ? m.rows       : 33;
+    const cols       = m ? m.cols       : 67;
+    const rows       = m ? m.rows       : 67;
     const data       = m ? m.data       : null;
-    const origin_col = m ? m.origin_col : 16;
-    const origin_row = m ? m.origin_row : 16;
-    const cell_cm    = m ? m.cell_cm    : 30;
+    const origin_col = m ? m.origin_col : 33;
+    const origin_row = m ? m.origin_row : 33;
+    const cell_cm    = m ? m.cell_cm    : 15;
 
     mapCanvas.width  = MAP_PX;
     mapCanvas.height = MAP_PX;
@@ -1164,5 +1164,162 @@ function renderObstacleMap(m) {
         a.download = `aria-capture-${Date.now()}.${mime}`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
     });
+})();
+
+// SYSTEM LOGGER TAB - live charts plus historical samples from dbstorage_tsstore.
+(function () {
+    const charts = {
+        cpuLive: newSystemChartState('blue', 'rgba(0, 0, 255, 0.1)'),
+        memLive: newSystemChartState('green', 'rgba(0, 255, 0, 0.1)'),
+        cpu1h: newSystemChartState('blue', 'rgba(0, 0, 255, 0.1)'),
+        mem1h: newSystemChartState('green', 'rgba(0, 255, 0, 0.1)'),
+        cpu1d: newSystemChartState('blue', 'rgba(0, 0, 255, 0.1)'),
+        mem1d: newSystemChartState('green', 'rgba(0, 255, 0, 0.1)'),
+    };
+    let liveCircleTimeout = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof Chart === 'undefined') return;
+
+        charts.cpuLive.canvas = document.getElementById('cpu-usage-live-chart');
+        charts.memLive.canvas = document.getElementById('memory-usage-live-chart');
+        charts.cpu1h.canvas = document.getElementById('cpu-usage-1h-chart');
+        charts.mem1h.canvas = document.getElementById('memory-usage-1h-chart');
+        charts.cpu1d.canvas = document.getElementById('cpu-usage-1d-chart');
+        charts.mem1d.canvas = document.getElementById('memory-usage-1d-chart');
+
+        document.querySelectorAll('.system-tab').forEach(tab => {
+            tab.addEventListener('click', async () => {
+                document.querySelectorAll('.system-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.system-tab-content').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                const panel = document.getElementById(tab.dataset.systemTab);
+                if (panel) panel.classList.add('active');
+
+                if (tab.dataset.systemTab === 'system-1h') {
+                    renderSystemChartData(charts.cpu1h, await listSystemSamples('cpu', '-1h', '5m'), 12, true, false);
+                    renderSystemChartData(charts.mem1h, await listSystemSamples('mem', '-1h', '5m'), 12, true, false);
+                } else if (tab.dataset.systemTab === 'system-1d') {
+                    renderSystemChartData(charts.cpu1d, await listSystemSamples('cpu', '-1d', '1h'), 24, false, false);
+                    renderSystemChartData(charts.mem1d, await listSystemSamples('mem', '-1d', '1h'), 24, false, false);
+                }
+            });
+        });
+
+        const helpText = {
+            cpu: 'Shows the percentage of CPU used. Historical views display averaged samples.',
+            memory: 'Shows the percentage of memory used. Historical views display averaged samples.',
+        };
+        document.querySelectorAll('.system-info-btn').forEach(img => {
+            const popover = img.nextElementSibling;
+            img.addEventListener('mouseenter', () => {
+                popover.textContent = img.classList.contains('cpu') ? helpText.cpu : helpText.memory;
+                popover.style.display = 'block';
+            });
+            img.addEventListener('mouseleave', () => {
+                popover.style.display = 'none';
+            });
+        });
+
+        socket.on('cpu_usage', message => renderSystemChartData(charts.cpuLive, [message]));
+        socket.on('memory_usage', message => renderSystemChartData(charts.memLive, [message]));
+    });
+
+    async function listSystemSamples(resource, start, aggrWindow) {
+        try {
+            const response = await fetch(`http://${window.location.host}/get_samples/${resource}/${start}/${aggrWindow}`);
+            if (!response.ok) return [];
+            const data = await response.json();
+            return Array.isArray(data) ? data : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function renderSystemChartData(obj, messages, maxPoints = 20, showMinutes = true, showSeconds = true) {
+        if (!obj.canvas || !messages || messages.length === 0) return;
+
+        const isLiveChart = obj.canvas.id === 'cpu-usage-live-chart' || obj.canvas.id === 'memory-usage-live-chart';
+        const noData = document.getElementById(obj.canvas.id + '-nodata');
+        const liveCircle = document.getElementById('system-live-circle');
+
+        if (!isLiveChart) {
+            obj.data.labels = [];
+            obj.data.datasets[0].data = [];
+        }
+
+        messages.forEach(message => {
+            if (!message || !message.ts) return;
+            const date = new Date(message.ts);
+            const label = showMinutes && showSeconds
+                ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : showMinutes
+                    ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : date.toLocaleTimeString([], { hour: '2-digit' });
+
+            obj.data.labels.push(label);
+            obj.data.datasets[0].data.push(message.value);
+            while (obj.data.labels.length > maxPoints) {
+                obj.data.labels.shift();
+                obj.data.datasets[0].data.shift();
+            }
+        });
+
+        const hasData = obj.data.labels.length > 0;
+        obj.canvas.style.display = hasData ? 'block' : 'none';
+        if (noData) noData.style.display = hasData ? 'none' : 'flex';
+
+        if (isLiveChart && liveCircle && hasData) {
+            liveCircle.style.display = 'inline-flex';
+            liveCircle.classList.add('flash');
+            if (liveCircleTimeout) clearTimeout(liveCircleTimeout);
+            liveCircleTimeout = setTimeout(() => liveCircle.classList.remove('flash'), 10000);
+        }
+
+        if (!hasData) return;
+        if (!obj.chart) {
+            obj.chart = new Chart(obj.canvas.getContext('2d'), {
+                type: 'line',
+                data: obj.data,
+                options: {
+                    responsive: true,
+                    animation: false,
+                    scales: {
+                        y: { min: 0, max: 100 },
+                        x: { grid: { display: false }, ticks: { maxRotation: 45, minRotation: 45 } },
+                    },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            displayColors: false,
+                            callbacks: {
+                                title: () => '',
+                                label: context => `${context.label} - ${context.parsed.y.toFixed(1)} %`,
+                            },
+                        },
+                    },
+                },
+            });
+        } else {
+            obj.chart.update();
+        }
+    }
+
+    function newSystemChartState(borderColor, backgroundColor) {
+        return {
+            canvas: null,
+            chart: null,
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    borderColor,
+                    backgroundColor,
+                    fill: true,
+                }],
+            },
+        };
+    }
 })();
 

@@ -63,7 +63,7 @@ class OccupancyGrid:
     def _to_cell(self, x_cm: float, y_cm: float) -> tuple[int, int]:
         """Convert world cm coords to (row, col). Returns (-1,-1) if out of bounds."""
         col = int(x_cm / CELL_SIZE_CM) + GRID_ORIGIN_COL
-        row = int(y_cm / CELL_SIZE_CM) + GRID_ORIGIN_ROW
+        row = GRID_ORIGIN_ROW - int(y_cm / CELL_SIZE_CM)
         if 0 <= row < GRID_ROWS and 0 <= col < GRID_COLS:
             return row, col
         return -1, -1
@@ -71,7 +71,7 @@ class OccupancyGrid:
     def _to_world(self, row: int, col: int) -> tuple[float, float]:
         """Convert grid (row, col) to world cm coords (cell centre)."""
         x = (col - GRID_ORIGIN_COL) * CELL_SIZE_CM + CELL_SIZE_CM / 2
-        y = (row - GRID_ORIGIN_ROW) * CELL_SIZE_CM + CELL_SIZE_CM / 2
+        y = (GRID_ORIGIN_ROW - row) * CELL_SIZE_CM - CELL_SIZE_CM / 2
         return x, y
 
     # ── Core updates ─────────────────────────────────────────────────────────
