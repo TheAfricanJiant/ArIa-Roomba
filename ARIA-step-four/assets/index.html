@@ -23,7 +23,8 @@ SPDX-License-Identifier: MPL-2.0
         <!-- ── Tab Navigation ── -->
         <nav class="tab-nav">
             <button class="tab-btn active" id="tab-control-btn" onclick="switchTab('control')">⚙️ Control</button>
-            <button class="tab-btn" id="tab-map-btn" onclick="switchTab('map')">🗺️ Map</button>
+            <button class="tab-btn" id="tab-map-btn" onclick="switchTab('map')">🗺️ Trajectory</button>
+            <button class="tab-btn" id="tab-nav-btn" onclick="switchTab('nav')">🧭 Nav</button>
             <button class="tab-btn" id="tab-pose-btn" onclick="switchTab('pose')">📐 Pose</button>
             <button class="tab-btn" id="tab-camera-btn" onclick="switchTab('camera')">📷 Camera</button>
         </nav>
@@ -48,37 +49,49 @@ SPDX-License-Identifier: MPL-2.0
                 <div class="telemetry-box" style="margin-top: 14px;">
                     <h3 class="arduino-text section-title">Manual Drive</h3>
                     <p class="instruction-text" style="margin-top: 2px; opacity: 0.85;">
-                        Use these buttons for direct motor commands (disables navigation).
+                        <strong>Hold</strong> to move — releases automatically when you let go.
                     </p>
                     <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                        <button id="drive-forward-btn" class="tab-btn" style="background:#4CAF50;color:white;min-width:120px;">⬆️ Forward</button>
+                        <button id="drive-forward-btn" class="tab-btn" style="background:#4CAF50;color:white;min-width:120px;touch-action:none;">⬆️ Forward</button>
                     </div>
                     <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
-                        <button id="drive-left-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;">⬅️ Left</button>
+                        <button id="drive-left-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;touch-action:none;">⬅️ Left</button>
                         <button id="drive-stop-btn" class="tab-btn" style="background:#e53935;color:white;min-width:120px;">🛑 Stop</button>
-                        <button id="drive-right-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;">➡️ Right</button>
+                        <button id="drive-right-btn" class="tab-btn" style="background:#008184;color:white;min-width:120px;touch-action:none;">➡️ Right</button>
                     </div>
                     <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
-                        <button id="drive-backward-btn" class="tab-btn" style="background:#6d4c41;color:white;min-width:120px;">⬇️ Back</button>
+                        <button id="drive-backward-btn" class="tab-btn" style="background:#6d4c41;color:white;min-width:120px;touch-action:none;">⬇️ Back</button>
+                    </div>
+                    <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:12px;">
+                        <button id="home-btn" class="tab-btn" style="background:#1565C0;color:white;min-width:200px;">🏠 Set as Home (Reset Origin)</button>
+                        <button id="auto-clean-btn" class="tab-btn" style="background:#6a1b9a;color:white;min-width:160px;">🧹 Start Auto-Clean</button>
                     </div>
                 </div>
 
                 <div class="telemetry-box" style="margin-top: 14px;">
-                    <h3 class="arduino-text section-title">Vacuum</h3>
+                    <h3 class="arduino-text section-title">Vacuum &amp; Brush</h3>
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                         <button id="vacuum-toggle-btn" class="tab-btn" style="background:#008184;color:white;min-width:160px;">
                             🌀 Vacuum OFF
                         </button>
                         <div style="flex:1;min-width:220px;">
                             <label for="vacuum-slider" class="instruction-text">
-                                <strong>PWM:</strong> <span id="vacuum-val">0</span>
+                                <strong>Vacuum PWM:</strong> <span id="vacuum-val">0</span>
                             </label>
                             <input type="range" id="vacuum-slider" min="0" max="255" value="0">
                         </div>
                     </div>
-                    <p class="instruction-text" style="margin-top: 8px; opacity: 0.85;">
-                        Sends <code>V,&lt;pwm&gt;</code> to the UNO Q (L298N ENB=10, IN3=11, IN4=9).
-                    </p>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                        <button id="brush-toggle-btn" class="tab-btn" style="background:#5d4037;color:white;min-width:160px;">
+                            🪥 Brush OFF
+                        </button>
+                        <div style="flex:1;min-width:220px;">
+                            <label for="brush-slider" class="instruction-text">
+                                <strong>Brush Speed:</strong> <span id="brush-val">0</span>
+                            </label>
+                            <input type="range" id="brush-slider" min="-100" max="100" value="0">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Raw Sensor Telemetry -->
@@ -102,6 +115,24 @@ SPDX-License-Identifier: MPL-2.0
                             <span class="telem-value" id="imu-gyro">X: 0.00 | Y: 0.00 | Z: 0.00</span>
                         </div>
                     </div>
+                    <!-- Ultrasonic sensors -->
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;justify-content:center;">
+                        <div style="background:#1a1a2e;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
+                            <div style="font-size:10px;color:#888;margin-bottom:2px;">◀ LEFT</div>
+                            <div id="us-left" style="font-size:18px;font-weight:700;color:#00e5ff;">—</div>
+                            <div style="font-size:10px;color:#888;">cm</div>
+                        </div>
+                        <div style="background:#1a1a2e;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
+                            <div style="font-size:10px;color:#888;margin-bottom:2px;">▲ FRONT</div>
+                            <div id="us-front" style="font-size:18px;font-weight:700;color:#69f0ae;">—</div>
+                            <div style="font-size:10px;color:#888;">cm</div>
+                        </div>
+                        <div style="background:#1a1a2e;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
+                            <div style="font-size:10px;color:#888;margin-bottom:2px;">RIGHT ▶</div>
+                            <div id="us-right" style="font-size:18px;font-weight:700;color:#00e5ff;">—</div>
+                            <div style="font-size:10px;color:#888;">cm</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="error-container" class="error-message" style="display: none;"></div>
@@ -113,13 +144,16 @@ SPDX-License-Identifier: MPL-2.0
             <div class="container" style="max-width: none; padding: 0;">
                 <div class="map-header" style="padding: 8px 16px;">
                     <span class="arduino-text section-title">Occupancy Grid</span>
-                    <span class="coverage-badge">Coverage: <strong id="coverage-pct">0%</strong></span>
+                    <span style="display:flex;align-items:center;gap:8px;">
+                        <button id="traj-only-btn" class="tab-btn" style="background:#2C353A;color:#90CAF9;font-size:12px;padding:4px 12px;" title="Toggle trajectory-only view (hides cell coloring)">🗺️ Trajectory Only</button>
+                        <span class="coverage-badge">Coverage: <strong id="coverage-pct">0%</strong></span>
+                    </span>
                 </div>
                 <div class="canvas-wrapper" style="width: 100%; background: #ECF1F1;">
                     <canvas id="map-canvas" style="display: block; width: 100%; image-rendering: pixelated;"></canvas>
                 </div>
                 <p class="instruction-text" style="margin: 8px 16px; text-align: center;">
-                    🟩 Cleaned &nbsp;|&nbsp; ⬛ Wall &nbsp;|&nbsp; ⬜ Unknown &nbsp;|&nbsp; 🔴 Trajectory &nbsp;|&nbsp; 🔵 Robot &nbsp;|&nbsp; 📍 Goal
+                    ⬜ Unknown &nbsp;|&nbsp; 🔴 Trajectory &nbsp;|&nbsp; 🔵 Robot &nbsp;|&nbsp; 📍 Goal
                 </p>
                 <div style="text-align: center; margin-bottom: 8px;">
                     <button id="set-goal-btn" class="tab-btn" style="background: #008184; color: white;">📍 Add Waypoints</button>
@@ -223,6 +257,38 @@ SPDX-License-Identifier: MPL-2.0
     <script src="libs/socket.io.min.js"></script>
     <!-- Match Python env ARIA_VIDEO_HTTP_PORT if Arduino changes the embed port -->
     <script>window.ARIA_VIDEO_HTTP_PORT = 4912;</script>
+
+        <!-- ══════════════ TAB: NAV (Obstacle Map + Mini Camera) ══════════════ -->
+        <div class="tab-panel hidden" id="tab-nav">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;padding:12px;">
+                <!-- Obstacle map -->
+                <div style="flex:2;min-width:280px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span class="arduino-text section-title">🧭 Obstacle Map</span>
+                        <span style="font-size:12px;color:#aaa;">Shading = obstacle confidence</span>
+                    </div>
+                    <canvas id="nav-canvas" style="display:block;width:100%;background:#111827;border-radius:10px;image-rendering:pixelated;"></canvas>
+                    <p class="instruction-text" style="margin-top:6px;text-align:center;font-size:12px;">
+                        ⬛ obstacle &nbsp;|&nbsp; ⬜ free &nbsp;|&nbsp; ⭐ goal &nbsp;|&nbsp; 🔵 robot
+                    </p>
+                </div>
+                <!-- Mini camera feed -->
+                <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px;">
+                    <span class="arduino-text section-title">📷 Live Feed</span>
+                    <div style="background:#0d0d1a;border-radius:10px;overflow:hidden;flex:1;min-height:200px;display:flex;align-items:center;justify-content:center;">
+                        <iframe id="nav-cam-iframe"
+                            title="ARIA nav camera"
+                            style="display:none;width:100%;border:none;"
+                            height="240"
+                            frameborder="0">
+                        </iframe>
+                        <span id="nav-cam-placeholder" style="color:#555;font-size:12px;text-align:center;padding:16px;">Camera not active<br><small>Open Camera tab first</small></span>
+                    </div>
+                    <div id="clean-state-badge" style="text-align:center;padding:8px;background:#1a1a2e;border-radius:8px;font-size:13px;color:#69f0ae;font-weight:600;">State: IDLE</div>
+                </div>
+            </div>
+        </div>
+
     <script src="app.js"></script>
 </body>
 </html>

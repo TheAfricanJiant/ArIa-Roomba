@@ -1,4 +1,4 @@
-﻿// â”€â”€ Element references â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Element references ──────────────────────────────────────────────────────
 const powerBtn    = document.getElementById('motor-power-btn');
 const powerText   = document.getElementById('power-text');
 const speedSlider = document.getElementById('speed-slider');
@@ -8,31 +8,43 @@ const vacuumToggleBtn = document.getElementById('vacuum-toggle-btn');
 const vacuumSlider    = document.getElementById('vacuum-slider');
 const vacuumVal       = document.getElementById('vacuum-val');
 
+const brushToggleBtn  = document.getElementById('brush-toggle-btn');
+const brushSlider     = document.getElementById('brush-slider');
+const brushVal        = document.getElementById('brush-val');
+
 const driveForwardBtn  = document.getElementById('drive-forward-btn');
 const driveBackwardBtn = document.getElementById('drive-backward-btn');
 const driveLeftBtn     = document.getElementById('drive-left-btn');
 const driveRightBtn    = document.getElementById('drive-right-btn');
 const driveStopBtn     = document.getElementById('drive-stop-btn');
+const homeBtn          = document.getElementById('home-btn');
+const autoCleanBtn     = document.getElementById('auto-clean-btn');
 
 const encL     = document.getElementById('enc-l');
 const encR     = document.getElementById('enc-r');
 const imuAccel = document.getElementById('imu-accel');
 const imuGyro  = document.getElementById('imu-gyro');
+const usLeft   = document.getElementById('us-left');
+const usFront  = document.getElementById('us-front');
+const usRight  = document.getElementById('us-right');
 
 const ekfX     = document.getElementById('ekf-x');
 const ekfY     = document.getElementById('ekf-y');
 const ekfTheta = document.getElementById('ekf-theta');
 const ekfDist  = document.getElementById('ekf-dist');
 
-const mapCanvas   = document.getElementById('map-canvas');
-const mapCtx      = mapCanvas.getContext('2d');
-const coveragePct = document.getElementById('coverage-pct');
-const setGoalBtn  = document.getElementById('set-goal-btn');
-const drawZoneBtn = document.getElementById('draw-zone-btn');
-const startNavBtn = document.getElementById('start-nav-btn');
+const mapCanvas      = document.getElementById('map-canvas');
+const mapCtx         = mapCanvas.getContext('2d');
+const coveragePct    = document.getElementById('coverage-pct');
+const setGoalBtn     = document.getElementById('set-goal-btn');
+const drawZoneBtn    = document.getElementById('draw-zone-btn');
+const startNavBtn    = document.getElementById('start-nav-btn');
 const saveRoutineBtn = document.getElementById('save-routine-btn');
-const clearGoalBtn= document.getElementById('clear-goal-btn');
+const clearGoalBtn   = document.getElementById('clear-goal-btn');
 const routinesSelect = document.getElementById('routines-select');
+
+const navCanvas = document.getElementById('nav-canvas');
+const navCtx    = navCanvas ? navCanvas.getContext('2d') : null;
 
 let _settingGoal = false;
 let _drawingZone = false;
@@ -126,6 +138,12 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('telemetry_update', (d) => updateTelemetry(d));
     socket.on('ekf_update',       (e) => updateEKF(e));
     socket.on('map_update',       (m) => renderMap(m));
+    socket.on('obstacle_map_update', (m) => renderObstacleMap(m));
+    socket.on('us_update',        (u) => updateUltrasonics(u));
+    socket.on('clean_state',      (s) => {
+        const badge = document.getElementById('clean-state-badge');
+        if (badge) badge.textContent = `State: ${s.state}`;
+    });
     
     socket.on('path_update', (path) => {
         _waypoints = path;
@@ -166,17 +184,72 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ── Brush slider & toggle ──
+    if (brushSlider) {
+        brushSlider.addEventListener('input', (e) => { if (brushVal) brushVal.textContent = e.target.value; });
+        brushSlider.addEventListener('change', (e) => socket.emit('set_brush', { speed: parseInt(e.target.value) }));
+    }
+    if (brushToggleBtn) {
+        brushToggleBtn.addEventListener('click', () => {
+            const cur = parseInt(brushSlider ? brushSlider.value : '0') || 0;
+            const next = cur !== 0 ? 0 : 80;
+            if (brushSlider) brushSlider.value = next;
+            if (brushVal) brushVal.textContent = next;
+            socket.emit('set_brush', { speed: next });
+            brushToggleBtn.textContent = next !== 0 ? '🪥 Brush ON' : '🪥 Brush OFF';
+            brushToggleBtn.style.background = next !== 0 ? '#4CAF50' : '#5d4037';
+        });
+    }
+
+    // ── Momentary drive buttons (hold to move, release to stop) ──
     function sendDrive(action) {
         const spd = parseInt(speedSlider ? speedSlider.value : '160') || 160;
         socket.emit('manual_drive', { action, speed: spd });
     }
-    if (driveForwardBtn)  driveForwardBtn.addEventListener('click',  () => sendDrive('forward'));
-    if (driveBackwardBtn) driveBackwardBtn.addEventListener('click', () => sendDrive('backward'));
-    if (driveLeftBtn)     driveLeftBtn.addEventListener('click',     () => sendDrive('left'));
-    if (driveRightBtn)    driveRightBtn.addEventListener('click',    () => sendDrive('right'));
-    if (driveStopBtn)     driveStopBtn.addEventListener('click',     () => sendDrive('stop'));
+    function addMomentary(btn, dir) {
+        if (!btn) return;
+        btn.addEventListener('pointerdown', (e) => { btn.setPointerCapture(e.pointerId); sendDrive(dir); });
+        btn.addEventListener('pointerup',     () => sendDrive('stop'));
+        btn.addEventListener('pointercancel', () => sendDrive('stop'));
+        btn.addEventListener('pointerleave',  () => sendDrive('stop'));
+    }
+    addMomentary(driveForwardBtn,  'forward');
+    addMomentary(driveBackwardBtn, 'backward');
+    addMomentary(driveLeftBtn,     'left');
+    addMomentary(driveRightBtn,    'right');
+    if (driveStopBtn) driveStopBtn.addEventListener('click', () => sendDrive('stop'));
 
-    // Tool buttons
+    // ── Home / Reset Origin button ──
+    if (homeBtn) {
+        homeBtn.addEventListener('click', () => {
+            if (confirm('🏠 Set current position as Home (resets encoders and map)?')) {
+                socket.emit('reset_encoders', {});
+                _trajectory = [];
+                _lastNavData = null;
+                if (navCtx) { navCtx.clearRect(0, 0, navCanvas.width, navCanvas.height); }
+            }
+        });
+    }
+
+    // ── Auto-clean toggle ──
+    if (autoCleanBtn) {
+        autoCleanBtn.addEventListener('click', () => {
+            socket.emit('toggle_auto_clean', {});
+        });
+    }
+
+    // -- Trajectory-Only toggle (Map tab) --
+    const trajOnlyBtn = document.getElementById('traj-only-btn');
+    if (trajOnlyBtn) {
+        trajOnlyBtn.addEventListener('click', () => {
+            _trajectoryOnly = !_trajectoryOnly;
+            trajOnlyBtn.style.background = _trajectoryOnly ? '#008184' : '#2C353A';
+            trajOnlyBtn.style.color      = _trajectoryOnly ? '#ffffff' : '#90CAF9';
+            trajOnlyBtn.textContent      = _trajectoryOnly ? '\u2705 Trajectory Only' : '\uD83D\uDDFA\uFE0F Trajectory Only';
+            if (_lastMapData) _drawMap(_lastMapData);
+        });
+    }
+
     setGoalBtn.addEventListener('click', () => {
         _settingGoal = true;
         _drawingZone = false;
@@ -310,10 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // â”€â”€ UI helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function updateUI(state) {
     const isOn = state.motors_on;
-    powerBtn.className   = isOn ? 'led-on' : 'led-off';
+    powerBtn.className    = isOn ? 'led-on' : 'led-off';
     powerText.textContent = isOn ? 'MOTORS ON' : 'MOTORS OFF';
-    speedSlider.value    = state.speed;
-    speedVal.textContent = state.speed;
+    speedSlider.value     = state.speed;
+    speedVal.textContent  = state.speed;
 
     // Vacuum
     if (typeof state.vacuum !== 'undefined' && vacuumSlider && vacuumVal) {
@@ -325,7 +398,24 @@ function updateUI(state) {
             vacuumToggleBtn.style.background = v > 0 ? '#4CAF50' : '#008184';
         }
     }
-    
+
+    // Brush
+    if (typeof state.brush !== 'undefined' && brushSlider) {
+        const b = parseInt(state.brush) || 0;
+        brushSlider.value = b;
+        if (brushVal) brushVal.textContent = b.toString();
+        if (brushToggleBtn) {
+            brushToggleBtn.textContent = b !== 0 ? '🪥 Brush ON' : '🪥 Brush OFF';
+            brushToggleBtn.style.background = b !== 0 ? '#4CAF50' : '#5d4037';
+        }
+    }
+
+    // Auto-clean button label
+    if (autoCleanBtn) {
+        autoCleanBtn.textContent = state.auto_clean ? '🛑 Stop Auto-Clean' : '🧹 Start Auto-Clean';
+        autoCleanBtn.style.background = state.auto_clean ? '#e53935' : '#6a1b9a';
+    }
+
     // Auto-clear UI if robot stops navigating
     if (!state.navigating && (_waypoints.length > 0 || _zone)) {
         _waypoints = [];
@@ -338,10 +428,20 @@ function updateUI(state) {
 }
 
 function updateTelemetry(data) {
-    encL.textContent     = data.enc_l;
-    encR.textContent     = data.enc_r;
-    imuAccel.textContent = `X: ${data.accel_x.toFixed(2)} | Y: ${data.accel_y.toFixed(2)} | Z: ${data.accel_z.toFixed(2)}`;
-    imuGyro.textContent  = `X: ${data.gyro_x.toFixed(2)} | Y: ${data.gyro_y.toFixed(2)} | Z: ${data.gyro_z.toFixed(2)}`;
+    if (encL) encL.textContent     = data.enc_l;
+    if (encR) encR.textContent     = data.enc_r;
+    if (imuAccel) imuAccel.textContent = `X: ${data.accel_x.toFixed(2)} | Y: ${data.accel_y.toFixed(2)} | Z: ${data.accel_z.toFixed(2)}`;
+    if (imuGyro)  imuGyro.textContent  = `X: ${data.gyro_x.toFixed(2)} | Y: ${data.gyro_y.toFixed(2)} | Z: ${data.gyro_z.toFixed(2)}`;
+}
+
+function updateUltrasonics(u) {
+    const fmt = (v) => (v >= 380 || v <= 0) ? '∞' : Math.round(v).toString();
+    if (usFront) usFront.textContent = fmt(u.front);
+    if (usRight) usRight.textContent = fmt(u.right);
+    if (usLeft)  usLeft.textContent  = fmt(u.left);
+    // Mirror to nav tab cam placeholder if needed
+    const frontWarn = u.front < 20;
+    if (usFront) usFront.style.color = frontWarn ? '#ff5252' : '#69f0ae';
 }
 
 function updateEKF(e) {
@@ -364,9 +464,10 @@ function updateEKF(e) {
 }
 
 // â”€â”€ Map state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-let _latestPose  = null;
-let _trajectory  = [];
-let _lastMapData = null;
+let _latestPose      = null;
+let _trajectory      = [];
+let _lastMapData     = null;
+let _trajectoryOnly  = false;   // true = suppress occupancy-cell coloring on Map tab
 
 // Viewport: always show robot at centre, Â±300 cm visible
 const HALF_VIEW = 300;  // cm
@@ -407,7 +508,7 @@ function _drawMap(m) {
 
     // 2 â”€â”€ Occupancy grid cells (only non-UNKNOWN, skip if no data)
     const cellPx = cell_cm * PX_PER_CM;
-    if (data) {
+    if (data && !_trajectoryOnly) {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const val = data[r][c];
@@ -581,6 +682,139 @@ function cellColor(val) {
     return '#E8EEEE';                             // unknown â€” same as background
 }
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// =============================================================================
+// NAV TAB - Obstacle Map canvas rendering
+// Driven by the 'obstacle_map_update' socket event emitted by Python when
+// ultrasonic readings update the nav-grid.
+// Grid payload: { cols, rows, data[][], origin_col, origin_row, cell_cm,
+//                robot: {x_cm, y_cm, theta_rad}, goal: {x_cm, y_cm} | null }
+// Each data[r][c] value: 0 = free, 1-255 = obstacle confidence.
+// =============================================================================
+
+let _lastNavData = null;
+
+/** Convert nav-grid world cm -> nav-canvas pixels, centred on robot. */
+function navW2P(wx, wy, canvasW, canvasH, pose, navPxPerCm) {
+    const cx = pose ? pose.x_cm : 0;
+    const cy = pose ? pose.y_cm : 0;
+    return {
+        x: canvasW / 2 + (wx - cx) * navPxPerCm,
+        y: canvasH / 2 - (wy - cy) * navPxPerCm,
+    };
+}
+
+function renderObstacleMap(m) {
+    _lastNavData = m;
+    if (!navCtx || !navCanvas) return;
+
+    const cols       = m.cols       || 21;
+    const rows       = m.rows       || 21;
+    const data       = m.data       || null;
+    const origin_col = m.origin_col != null ? m.origin_col : Math.floor(cols / 2);
+    const origin_row = m.origin_row != null ? m.origin_row : Math.floor(rows / 2);
+    const cell_cm    = m.cell_cm    || 20;
+    const pose       = m.robot      || _latestPose || null;
+    const goal       = m.goal       || null;
+
+    // Size the canvas to fill its CSS container
+    const cssW = navCanvas.clientWidth  || 400;
+    const cssH = navCanvas.clientHeight || 400;
+    navCanvas.width  = cssW;
+    navCanvas.height = cssH;
+
+    const navPxPerCm = Math.min(cssW, cssH) / (Math.max(cols, rows) * cell_cm);
+    const cellPx     = cell_cm * navPxPerCm;
+
+    // 1 -- Dark background
+    navCtx.fillStyle = '#111827';
+    navCtx.fillRect(0, 0, cssW, cssH);
+
+    // 2 -- Obstacle cells shaded by confidence (0=free, 255=solid obstacle)
+    if (data) {
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const conf = data[r][c] || 0;
+                if (conf === 0) continue;
+                const wx = (c - origin_col) * cell_cm + cell_cm / 2;
+                const wy = (origin_row - r) * cell_cm - cell_cm / 2;
+                const p  = navW2P(wx, wy, cssW, cssH, pose, navPxPerCm);
+                const alpha = Math.min(1, conf / 255);
+                navCtx.fillStyle = 'rgba(255,87,34,' + (0.25 + 0.75 * alpha).toFixed(2) + ')';
+                navCtx.fillRect(p.x - cellPx / 2, p.y - cellPx / 2, cellPx, cellPx);
+            }
+        }
+    }
+
+    // 3 -- Faint grid lines (centred on robot)
+    navCtx.strokeStyle = 'rgba(255,255,255,0.07)';
+    navCtx.lineWidth   = 0.5;
+    const pCx = pose ? pose.x_cm : 0;
+    const pCy = pose ? pose.y_cm : 0;
+    const halfSpanCm = Math.max(cols, rows) * cell_cm / 2;
+    for (let wx = pCx - halfSpanCm; wx <= pCx + halfSpanCm; wx += cell_cm) {
+        const p = navW2P(wx, pCy, cssW, cssH, pose, navPxPerCm);
+        navCtx.beginPath(); navCtx.moveTo(p.x, 0); navCtx.lineTo(p.x, cssH); navCtx.stroke();
+    }
+    for (let wy = pCy - halfSpanCm; wy <= pCy + halfSpanCm; wy += cell_cm) {
+        const p = navW2P(pCx, wy, cssW, cssH, pose, navPxPerCm);
+        navCtx.beginPath(); navCtx.moveTo(0, p.y); navCtx.lineTo(cssW, p.y); navCtx.stroke();
+    }
+
+    // 4 -- Trajectory path overlay
+    if (_trajectory.length > 1) {
+        navCtx.beginPath();
+        navCtx.strokeStyle = 'rgba(105,240,174,0.75)';
+        navCtx.lineWidth   = 2;
+        navCtx.lineJoin    = 'round';
+        _trajectory.forEach(function(pt, i) {
+            const p = navW2P(pt.x, pt.y, cssW, cssH, pose, navPxPerCm);
+            i === 0 ? navCtx.moveTo(p.x, p.y) : navCtx.lineTo(p.x, p.y);
+        });
+        navCtx.stroke();
+    }
+
+    // 5 -- Goal star
+    if (goal) {
+        const gp = navW2P(goal.x_cm, goal.y_cm, cssW, cssH, pose, navPxPerCm);
+        navCtx.font         = '18px serif';
+        navCtx.textAlign    = 'center';
+        navCtx.textBaseline = 'middle';
+        navCtx.fillText('\u2B50', gp.x, gp.y);
+    }
+
+    // 6 -- Robot dot (always at canvas centre because we track robot position)
+    const theta = pose ? pose.theta_rad : 0;
+    const RR    = 10;
+    navCtx.save();
+    navCtx.translate(cssW / 2, cssH / 2);
+    navCtx.rotate(-theta);
+    navCtx.beginPath();
+    navCtx.arc(0, 0, RR, 0, Math.PI * 2);
+    navCtx.fillStyle   = '#1565C0';
+    navCtx.fill();
+    navCtx.strokeStyle = '#90CAF9';
+    navCtx.lineWidth   = 2;
+    navCtx.stroke();
+    // Heading arrow
+    navCtx.beginPath();
+    navCtx.moveTo(0, 0);
+    navCtx.lineTo(RR + 8, 0);
+    navCtx.strokeStyle = '#90CAF9';
+    navCtx.lineWidth   = 2.5;
+    navCtx.stroke();
+    navCtx.restore();
+
+    // 7 -- Coordinate label (bottom-left)
+    const lbl = pose
+        ? 'X: ' + pose.x_cm.toFixed(1) + ' cm  Y: ' + pose.y_cm.toFixed(1) + ' cm'
+        : 'Waiting for pose...';
+    navCtx.fillStyle    = 'rgba(255,255,255,0.4)';
+    navCtx.font         = '11px monospace';
+    navCtx.textAlign    = 'left';
+    navCtx.textBaseline = 'bottom';
+    navCtx.fillText(lbl, 8, cssH - 6);
+}
+
 // CAMERA TAB â€” iframe live stream + snapshot + upload+detect + detections log
 // Stream is served automatically by the arduino:video_object_detection brick
 // at http://BOARD:4912/embed â€” no manual start/stop needed.
