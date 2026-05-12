@@ -421,8 +421,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const cx = _latestPose ? _latestPose.x_cm : 0;
         const cy = _latestPose ? _latestPose.y_cm : 0;
-        const worldX = cx + (clickX - MAP_PX / 2) / PX_PER_CM;
-        const worldY = cy - (clickY - MAP_PX / 2) / PX_PER_CM;
+        const worldX = cx - (clickY - MAP_PX / 2) / PX_PER_CM;
+        const worldY = cy - (clickX - MAP_PX / 2) / PX_PER_CM;
 
         if (_settingGoal) {
             _waypoints.push({ x: worldX, y: worldY });
@@ -578,8 +578,8 @@ function w2p(wx, wy) {
     const cx = _latestPose ? _latestPose.x_cm : 0;
     const cy = _latestPose ? _latestPose.y_cm : 0;
     return {
-        x: MAP_PX / 2 + (wx - cx) * PX_PER_CM,
-        y: MAP_PX / 2 - (wy - cy) * PX_PER_CM   // canvas Y is flipped
+        x: MAP_PX / 2 - (wy - cy) * PX_PER_CM,
+        y: MAP_PX / 2 - (wx - cx) * PX_PER_CM
     };
 }
 
@@ -630,11 +630,11 @@ function _drawMap(m) {
     const y0 = Math.floor((robotY - HALF_VIEW) / cell_cm) * cell_cm;
     for (let wx = x0; wx <= robotX + HALF_VIEW; wx += cell_cm) {
         const p = w2p(wx, 0);
-        mapCtx.beginPath(); mapCtx.moveTo(p.x, 0); mapCtx.lineTo(p.x, MAP_PX); mapCtx.stroke();
+        mapCtx.beginPath(); mapCtx.moveTo(0, p.y); mapCtx.lineTo(MAP_PX, p.y); mapCtx.stroke();
     }
     for (let wy = y0; wy <= robotY + HALF_VIEW; wy += cell_cm) {
         const p = w2p(0, wy);
-        mapCtx.beginPath(); mapCtx.moveTo(0, p.y); mapCtx.lineTo(MAP_PX, p.y); mapCtx.stroke();
+        mapCtx.beginPath(); mapCtx.moveTo(p.x, 0); mapCtx.lineTo(p.x, MAP_PX); mapCtx.stroke();
     }
 
     // 4 â”€â”€ Origin crosshair (blue dashes)
@@ -670,7 +670,7 @@ function _drawMap(m) {
     const R = 12;
     mapCtx.save();
     mapCtx.translate(MAP_PX / 2, MAP_PX / 2);
-    mapCtx.rotate(-theta);
+    mapCtx.rotate(-theta - Math.PI / 2);
     // Body
     mapCtx.beginPath();
     mapCtx.arc(0, 0, R, 0, Math.PI * 2);
@@ -797,8 +797,8 @@ function navW2P(wx, wy, canvasW, canvasH, pose, navPxPerCm) {
     const cx = pose ? pose.x_cm : 0;
     const cy = pose ? pose.y_cm : 0;
     return {
-        x: canvasW / 2 + (wx - cx) * navPxPerCm,
-        y: canvasH / 2 - (wy - cy) * navPxPerCm,
+        x: canvasW / 2 - (wy - cy) * navPxPerCm,
+        y: canvasH / 2 - (wx - cx) * navPxPerCm,
     };
 }
 
@@ -852,11 +852,11 @@ function renderObstacleMap(m) {
     const halfSpanCm = Math.max(cols, rows) * cell_cm / 2;
     for (let wx = pCx - halfSpanCm; wx <= pCx + halfSpanCm; wx += cell_cm) {
         const p = navW2P(wx, pCy, cssW, cssH, pose, navPxPerCm);
-        navCtx.beginPath(); navCtx.moveTo(p.x, 0); navCtx.lineTo(p.x, cssH); navCtx.stroke();
+        navCtx.beginPath(); navCtx.moveTo(0, p.y); navCtx.lineTo(cssW, p.y); navCtx.stroke();
     }
     for (let wy = pCy - halfSpanCm; wy <= pCy + halfSpanCm; wy += cell_cm) {
         const p = navW2P(pCx, wy, cssW, cssH, pose, navPxPerCm);
-        navCtx.beginPath(); navCtx.moveTo(0, p.y); navCtx.lineTo(cssW, p.y); navCtx.stroke();
+        navCtx.beginPath(); navCtx.moveTo(p.x, 0); navCtx.lineTo(p.x, cssH); navCtx.stroke();
     }
 
     // 4 -- Trajectory path overlay
@@ -886,7 +886,7 @@ function renderObstacleMap(m) {
     const RR    = 10;
     navCtx.save();
     navCtx.translate(cssW / 2, cssH / 2);
-    navCtx.rotate(-theta);
+    navCtx.rotate(-theta - Math.PI / 2);
     navCtx.beginPath();
     navCtx.arc(0, 0, RR, 0, Math.PI * 2);
     navCtx.fillStyle   = '#1565C0';
