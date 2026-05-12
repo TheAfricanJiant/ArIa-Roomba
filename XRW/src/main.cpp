@@ -11,6 +11,11 @@
  * Motor direction:
  *   Set MOTOR_L_INVERT / MOTOR_R_INVERT to true if a motor runs backwards.
  *   Positive values = forward for that wheel.
+ *
+ * Hardware note:
+ *   Left motor is on Motor 4 port (original Motor L port DRV8835 damaged
+ *   by a shorted motor). Right motor is on Motor R port. Both ports share
+ *   the same healthy DRV8835 chip.
  */
 
 #include <Arduino.h>
@@ -18,35 +23,33 @@
 #include <Adafruit_LSM6DSOX.h>
 #include <stdarg.h>
 
-#define MOTOR_L_PH 6
-#define MOTOR_L_EN 7
-#define MOTOR_R_PH 14
-#define MOTOR_R_EN 15
-#define ENC_L_A    4
-#define ENC_L_B    5
-#define ENC_R_A    12
-#define ENC_R_B    13
+// Left motor — Motor 4 port (GPIO 8–11)
+#define MOTOR_L_PH  10
+#define MOTOR_L_EN  11
+#define ENC_L_A      8
+#define ENC_L_B      9
+
+// Right motor — Motor R port (GPIO 12–15)
+#define MOTOR_R_PH  14
+#define MOTOR_R_EN  15
+#define ENC_R_A     12
+#define ENC_R_B     13
 
 #define IMU_SDA_PIN      18
 #define IMU_SCL_PIN      19
 #define IMU_I2C_ADDRESS  0x6B
 
 // ── Direction invert flags ───────────────────────────────────────────────────
-// Set to true if that motor runs backwards when commanded forward.
-// Flip MOTOR_L_INVERT if left motor is wrong; MOTOR_R_INVERT for right.
 #define MOTOR_L_INVERT true
 #define MOTOR_R_INVERT true
 
 // ── Encoders ─────────────────────────────────────────────────────────────────
-// Fix (2026-05): ISRs read the actual phase-pin state at interrupt time rather
-// than relying on the dirL/dirR globals written by setMotors().  This gives the
-// correct sign during deceleration, back-EMF roll-back, or external pushes.
 volatile long encL = 0;
 volatile long encR = 0;
 
 void onEncL() {
     bool chB = (digitalRead(ENC_L_B) == HIGH);
-    encL += chB ? 1 : -1;
+    encL += chB ? -1 : 1;
 }
 
 void onEncR() {
@@ -72,13 +75,11 @@ void setMotors(int l, int r) {
     l = constrain(l, -255, 255);
     r = constrain(r, -255, 255);
 
-    // Apply inversion flags
     if (MOTOR_L_INVERT) l = -l;
     if (MOTOR_R_INVERT) r = -r;
 
     digitalWrite(MOTOR_L_PH, l >= 0 ? HIGH : LOW);
     digitalWrite(MOTOR_R_PH, r >= 0 ? HIGH : LOW);
-    
     analogWrite(MOTOR_L_EN, abs(l));
     analogWrite(MOTOR_R_EN, abs(r));
 }
@@ -96,15 +97,17 @@ void setup() {
     while (!Serial) delay(10);
 
     pinMode(MOTOR_L_PH, OUTPUT);
+    pinMode(MOTOR_L_EN, OUTPUT);
     pinMode(MOTOR_R_PH, OUTPUT);
-    
+    pinMode(MOTOR_R_EN, OUTPUT);
+
     analogWriteFreq(20000); // 20kHz
-    
+
     stopMotors();
 
     pinMode(ENC_L_A, INPUT_PULLUP);
-    pinMode(ENC_R_A, INPUT_PULLUP);
     pinMode(ENC_L_B, INPUT_PULLUP);
+    pinMode(ENC_R_A, INPUT_PULLUP);
     pinMode(ENC_R_B, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ENC_L_A), onEncL, RISING);
     attachInterrupt(digitalPinToInterrupt(ENC_R_A), onEncR, RISING);
@@ -140,7 +143,6 @@ void loop() {
         cmd.trim();
 
         if (cmd.startsWith("M,")) {
-            // M,left,right
             int c1 = cmd.indexOf(',');
             int c2 = cmd.indexOf(',', c1 + 1);
             if (c1 != -1 && c2 != -1) {
@@ -149,12 +151,11 @@ void loop() {
                 setMotors(left, right);
             }
         } else if (cmd == "R" || cmd.startsWith("R,")) {
-            // Encoder reset — zero both counters
             noInterrupts();
             encL = 0;
             encR = 0;
             interrupts();
-            Serial.println("R,OK");  // ack
+            Serial.println("R,OK");
         }
     }
 
