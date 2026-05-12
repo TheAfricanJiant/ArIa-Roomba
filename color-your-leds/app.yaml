@@ -1,6 +1,0 @@
-name: Color your LEDs
-icon: 🎨
-description: Control the color of your LEDs from a web interface.
-
-bricks:
-  - arduino:web_ui

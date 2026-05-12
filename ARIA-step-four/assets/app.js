@@ -132,6 +132,27 @@ function switchTab(name) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(`tab-${name}`).classList.remove('hidden');
     document.getElementById(`tab-${name}-btn`).classList.add('active');
+
+    const host = window.location.hostname;
+    const camUrl = `http://${host}:${VIDEO_HTTP_PORT}/embed`;
+    
+    if (name === 'camera') {
+        const camIframe = document.getElementById('cam-iframe');
+        if (camIframe && !camIframe.src) {
+            camIframe.src = camUrl;
+            camIframe.style.display = 'block';
+            const camPlaceholder = document.getElementById('cam-placeholder');
+            if (camPlaceholder) camPlaceholder.style.display = 'none';
+        }
+    } else if (name === 'nav') {
+        const navCamIframe = document.getElementById('nav-cam-iframe');
+        if (navCamIframe && !navCamIframe.src) {
+            navCamIframe.src = camUrl;
+            navCamIframe.style.display = 'block';
+            const navPlaceholder = document.getElementById('nav-cam-placeholder');
+            if (navPlaceholder) navPlaceholder.style.display = 'none';
+        }
+    }
 }
 
 // â”€â”€ Socket event wiring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

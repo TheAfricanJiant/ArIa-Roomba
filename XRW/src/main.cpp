@@ -23,7 +23,9 @@
 #define MOTOR_R_PH 14
 #define MOTOR_R_EN 15
 #define ENC_L_A    4
+#define ENC_L_B    5
 #define ENC_R_A    12
+#define ENC_R_B    13
 
 #define IMU_SDA_PIN      18
 #define IMU_SCL_PIN      19
@@ -43,15 +45,13 @@ volatile long encL = 0;
 volatile long encR = 0;
 
 void onEncL() {
-    bool ph = (digitalRead(MOTOR_L_PH) == HIGH);
-    if (MOTOR_L_INVERT) ph = !ph;
-    encL += ph ? 1 : -1;
+    bool chB = (digitalRead(ENC_L_B) == HIGH);
+    encL += chB ? 1 : -1;
 }
 
 void onEncR() {
-    bool ph = (digitalRead(MOTOR_R_PH) == HIGH);
-    if (MOTOR_R_INVERT) ph = !ph;
-    encR += ph ? 1 : -1;
+    bool chB = (digitalRead(ENC_R_B) == HIGH);
+    encR += chB ? 1 : -1;
 }
 
 // ── IMU ───────────────────────────────────────────────────────────────────────
@@ -76,9 +76,9 @@ void setMotors(int l, int r) {
     if (MOTOR_L_INVERT) l = -l;
     if (MOTOR_R_INVERT) r = -r;
 
-    // Write phase pin first; ISRs now read the pin directly so no dirL/dirR needed.
     digitalWrite(MOTOR_L_PH, l >= 0 ? HIGH : LOW);
     digitalWrite(MOTOR_R_PH, r >= 0 ? HIGH : LOW);
+    
     analogWrite(MOTOR_L_EN, abs(l));
     analogWrite(MOTOR_R_EN, abs(r));
 }
@@ -86,8 +86,6 @@ void setMotors(int l, int r) {
 void stopMotors() {
     analogWrite(MOTOR_L_EN, 0);
     analogWrite(MOTOR_R_EN, 0);
-    // Phase pins left in their last state so ISRs still sign ticks correctly
-    // during any brief coast after the enable goes low.
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -97,12 +95,17 @@ void setup() {
     Serial.begin(115200);
     while (!Serial) delay(10);
 
-    pinMode(MOTOR_L_PH, OUTPUT); pinMode(MOTOR_L_EN, OUTPUT);
-    pinMode(MOTOR_R_PH, OUTPUT); pinMode(MOTOR_R_EN, OUTPUT);
+    pinMode(MOTOR_L_PH, OUTPUT);
+    pinMode(MOTOR_R_PH, OUTPUT);
+    
+    analogWriteFreq(20000); // 20kHz
+    
     stopMotors();
 
     pinMode(ENC_L_A, INPUT_PULLUP);
     pinMode(ENC_R_A, INPUT_PULLUP);
+    pinMode(ENC_L_B, INPUT_PULLUP);
+    pinMode(ENC_R_B, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ENC_L_A), onEncL, RISING);
     attachInterrupt(digitalPinToInterrupt(ENC_R_A), onEncR, RISING);
 
