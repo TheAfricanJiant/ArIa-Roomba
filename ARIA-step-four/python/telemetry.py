@@ -394,8 +394,9 @@ def _us_poll_loop(ui=None):
 def telemetry_loop(ui) -> None:
     """Background thread: read XRW serial, run EKF, push to WebUI."""
     global _last_map_push
-    # Start ultrasonic and system health polling in their own threads
-    threading.Thread(target=_us_poll_loop, args=(ui,), daemon=True).start()
+    # Ultrasonic polling is disabled for now: the board-side stream is not
+    # consistently available in the web UI, and stale readings made waypoint
+    # following unsafe. Re-enable _us_poll_loop only after that stream is fixed.
     threading.Thread(target=_system_health_loop, args=(ui,), daemon=True).start()
     log.info("Telemetry loop started.")
 
@@ -418,7 +419,6 @@ def telemetry_loop(ui) -> None:
                     if snap:
                         ui.send_message('map_update', snap)
                     ui.send_message('obstacle_map_update', get_obstacle_snapshot())
-                    ui.send_message('us_update', get_ultrasonics())
                     log.debug(f"Pose → {get_pose()}")
         except Exception as e:
             log.error(f"telemetry_loop error: {e}")

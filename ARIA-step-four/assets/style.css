@@ -225,6 +225,48 @@ body {
     font-size: 12px;
 }
 
+.nav-status-panel {
+    margin-top: 14px;
+    background: #ECF1F1;
+    border: 1px solid #C9D2D2;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.nav-status-title {
+    color: #008184;
+    font-family: "Roboto Mono", monospace;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.nav-status-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 0;
+    border-top: 1px solid rgba(44, 53, 58, 0.08);
+    color: #5A6A6A;
+    font-size: 12px;
+}
+
+.nav-status-row strong {
+    color: #2C353A;
+    font-family: "Roboto Mono", monospace;
+    font-size: 12px;
+    text-align: right;
+}
+
+.nav-status-note {
+    margin-top: 8px;
+    color: #2C353A;
+    font-family: "Roboto Mono", monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
 /* ── Speed Slider ────────────────────────────────────────────────────────── */
 .slider-section {
     margin: 24px auto;

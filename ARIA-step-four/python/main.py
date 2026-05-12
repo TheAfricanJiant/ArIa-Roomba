@@ -756,13 +756,14 @@ def set_speed(client, data):
 def on_get_initial_state(client, data):
     ui.send_message("state_update", state, client)
     ui.send_message("routines_list", _load_routines(), client)
-    ui.send_message("us_update", telemetry.get_ultrasonics(), client)
+    ui.send_message("nav_status", nav.debug_status(), client)
 
 def set_goal(client, data):
     x = data.get("x", 0.0); y = data.get("y", 0.0)
     nav.set_goal(x, y, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
+    ui.send_message("nav_status", nav.debug_status())
 
 def set_path(client, data):
     points = data.get("path", [])
@@ -771,6 +772,7 @@ def set_path(client, data):
     nav.set_path(path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
+    ui.send_message("nav_status", nav.debug_status())
     ui.send_message("path_update", [{"x":p[0],"y":p[1]} for p in path])
 
 def clean_zone_ui(client, data):
@@ -783,6 +785,7 @@ def clean_zone_ui(client, data):
 def clear_goal(client, data):
     nav.clear_goal(); state["navigating"] = False; state["motors_on"] = False
     motor.send_motor_cmd(0, 0); ui.send_message("state_update", state)
+    ui.send_message("nav_status", nav.debug_status())
     ui.send_message("path_update", [])
 
 
@@ -850,16 +853,17 @@ def manual_drive_ui(client, data):
 # ══════════════════════════════════════════════════════════════════════════════
 def navigation_loop():
     last_count = -1
+    last_nav_status = 0.0
     while True:
         try:
             pose = telemetry.get_pose()
-            us   = telemetry.get_ultrasonics()
+            safe_us = {"front": 999.0, "right": 999.0, "left": 999.0}
 
             # ── Auto clean mode: full state machine ──
             if state.get("auto_clean") and _FULL_NAV and _clean_sm:
                 cmd = _clean_sm.step(
                     pose["x_cm"], pose["y_cm"], pose["theta_rad"],
-                    us, battery_pct=100.0
+                    safe_us, battery_pct=100.0
                 )
                 motor.send_motor_cmd(cmd.left, cmd.right)
                 vacuum.set_vacuum(cmd.vacuum)
@@ -875,11 +879,12 @@ def navigation_loop():
                 l, r, arrived = nav.step(
                     pose["x_cm"], pose["y_cm"], pose["theta_rad"]
                 )
-                # Obstacle safety override: stop if front too close
-                if us.get("front", 999) < 15:
-                    motor.send_motor_cmd(0, 0)
-                else:
-                    motor.send_motor_cmd(l, r)
+                motor.send_motor_cmd(l, r)
+
+                now = time.time()
+                if now - last_nav_status > 0.25:
+                    ui.send_message("nav_status", nav.debug_status())
+                    last_nav_status = now
 
                 count = len(nav.waypoints)
                 if count != last_count:
@@ -893,6 +898,7 @@ def navigation_loop():
                     state["motors_on"]  = False
                     motor.send_motor_cmd(0, 0)
                     ui.send_message("state_update", state)
+                    ui.send_message("nav_status", nav.debug_status())
                     ui.send_message("path_update", [])
             
             update_hardware_indicators()

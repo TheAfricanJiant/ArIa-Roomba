@@ -19,6 +19,13 @@ const driveRightBtn    = document.getElementById('drive-right-btn');
 const driveStopBtn     = document.getElementById('drive-stop-btn');
 const homeBtn          = document.getElementById('home-btn');
 const autoCleanBtn     = document.getElementById('auto-clean-btn');
+const navStatusState   = document.getElementById('nav-status-state');
+const navStatusMode    = document.getElementById('nav-status-mode');
+const navStatusDistance= document.getElementById('nav-status-distance');
+const navStatusHeading = document.getElementById('nav-status-heading');
+const navStatusPwm     = document.getElementById('nav-status-pwm');
+const navStatusQueued  = document.getElementById('nav-status-queued');
+const navStatusTarget  = document.getElementById('nav-status-target');
 
 const encL     = document.getElementById('enc-l');
 const encR     = document.getElementById('enc-r');
@@ -165,6 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('map_update',       (m) => renderMap(m));
     socket.on('obstacle_map_update', (m) => renderObstacleMap(m));
     socket.on('us_update',        (u) => updateUltrasonics(u));
+    socket.on('nav_status',       (s) => updateNavStatus(s));
     socket.on('cpu_usage',        (d) => { if (sysCpu) sysCpu.textContent = d.value.toFixed(1) + '%'; });
     socket.on('memory_usage',     (d) => { if (sysMem) sysMem.textContent = d.value.toFixed(1) + '%'; });
     socket.on('clean_state',      (s) => {
@@ -517,6 +525,22 @@ function updateUltrasonics(u) {
     });
 
     if (usLast) usLast.textContent = new Date().toLocaleTimeString();
+}
+
+function updateNavStatus(s) {
+    if (!s) return;
+    if (navStatusState) navStatusState.textContent = s.state || 'idle';
+    if (navStatusMode) navStatusMode.textContent = s.mode || 'forward-only pure pursuit';
+    if (navStatusDistance) navStatusDistance.textContent = `${Number(s.distance_cm || 0).toFixed(1)} cm`;
+    if (navStatusHeading) navStatusHeading.textContent = `${Number(s.heading_error_deg || 0).toFixed(1)} deg`;
+    if (navStatusPwm) navStatusPwm.textContent = `L ${s.left_pwm || 0} / R ${s.right_pwm || 0}`;
+    if (navStatusQueued) navStatusQueued.textContent = String(s.queued || 0);
+    if (navStatusTarget) {
+        const target = s.target || s.goal;
+        navStatusTarget.textContent = target
+            ? `Target: ${Number(target.x || 0).toFixed(1)}, ${Number(target.y || 0).toFixed(1)} cm`
+            : 'Target: none';
+    }
 }
 
 function updateEKF(e) {

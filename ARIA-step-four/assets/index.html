@@ -98,21 +98,21 @@ SPDX-License-Identifier: MPL-2.0
                     <div class="sonar-panel">
                         <div class="sonar-card">
                             <span class="sonar-label">LEFT</span>
-                            <span class="sonar-value" id="us-left">—</span>
+                            <span class="sonar-value" id="us-left">off</span>
                             <span class="sonar-unit">cm</span>
                         </div>
                         <div class="sonar-card sonar-front">
                             <span class="sonar-label">FRONT</span>
-                            <span class="sonar-value" id="us-front">—</span>
+                            <span class="sonar-value" id="us-front">off</span>
                             <span class="sonar-unit">cm</span>
                         </div>
                         <div class="sonar-card">
                             <span class="sonar-label">RIGHT</span>
-                            <span class="sonar-value" id="us-right">—</span>
+                            <span class="sonar-value" id="us-right">off</span>
                             <span class="sonar-unit">cm</span>
                         </div>
                     </div>
-                    <div class="sonar-status">Ultrasonic stream: <span id="us-last">waiting</span></div>
+                    <div class="sonar-status">Ultrasonic stream: <span id="us-last">disabled for waypoint testing</span></div>
                 </div>
 
                 <div id="error-container" class="error-message" style="display: none;"></div>
@@ -370,6 +370,16 @@ SPDX-License-Identifier: MPL-2.0
                         <button id="auto-clean-btn" class="nav-action-btn nav-action-primary" type="button">Start Auto-Clean</button>
                     </div>
                     <p class="instruction-text nav-drive-note"><strong>Hold</strong> a direction to move. Release to stop.</p>
+                    <div class="nav-status-panel" aria-live="polite">
+                        <div class="nav-status-title">Waypoint Tracker</div>
+                        <div class="nav-status-row"><span>State</span><strong id="nav-status-state">idle</strong></div>
+                        <div class="nav-status-row"><span>Mode</span><strong id="nav-status-mode">forward-only pure pursuit</strong></div>
+                        <div class="nav-status-row"><span>Distance</span><strong id="nav-status-distance">0.0 cm</strong></div>
+                        <div class="nav-status-row"><span>Heading Error</span><strong id="nav-status-heading">0.0 deg</strong></div>
+                        <div class="nav-status-row"><span>Wheel PWM</span><strong id="nav-status-pwm">L 0 / R 0</strong></div>
+                        <div class="nav-status-row"><span>Queued</span><strong id="nav-status-queued">0</strong></div>
+                        <div class="nav-status-note" id="nav-status-target">Target: none</div>
+                    </div>
                 </div>
                 <!-- Obstacle map -->
                 <div style="flex:2;min-width:280px;">
