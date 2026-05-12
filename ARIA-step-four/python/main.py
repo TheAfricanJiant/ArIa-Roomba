@@ -879,7 +879,9 @@ def navigation_loop():
                 l, r, arrived = nav.step(
                     pose["x_cm"], pose["y_cm"], pose["theta_rad"]
                 )
-                motor.send_motor_cmd(l, r)
+                # Manual UI calibration shows this XRP wiring treats canonical
+                # forward (left=+, right=+) as hardware (-left, right).
+                motor.send_motor_cmd(-l, r)
 
                 now = time.time()
                 if now - last_nav_status > 0.25:
