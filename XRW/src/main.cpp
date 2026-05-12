@@ -9,13 +9,12 @@
  *   T,encL,encR,ax,ay,az,gx,gy,gz\n
  *
  * Motor direction:
- *   Set MOTOR_L_INVERT / MOTOR_R_INVERT to true if a motor runs backwards.
  *   Positive values = forward for that wheel.
  *
  * Hardware note:
- *   Left motor is on Motor 4 port (original Motor L port DRV8835 damaged
- *   by a shorted motor). Right motor is on Motor R port. Both ports share
- *   the same healthy DRV8835 chip.
+ *   Left motor is on Motor 4 port — original Motor L port DRV8835
+ *   was damaged by a shorted motor cable.
+ *   Right motor is on Motor R port.
  */
 
 #include <Arduino.h>
@@ -23,13 +22,13 @@
 #include <Adafruit_LSM6DSOX.h>
 #include <stdarg.h>
 
-// Left motor — Motor 4 port (GPIO 8–11)
+// Left motor — Motor 4 port
 #define MOTOR_L_PH  10
 #define MOTOR_L_EN  11
 #define ENC_L_A      8
 #define ENC_L_B      9
 
-// Right motor — Motor R port (GPIO 12–15)
+// Right motor — Motor R port
 #define MOTOR_R_PH  14
 #define MOTOR_R_EN  15
 #define ENC_R_A     12
@@ -47,15 +46,17 @@
 volatile long encL = 0;
 volatile long encR = 0;
 
+
 void onEncL() {
     bool chB = (digitalRead(ENC_L_B) == HIGH);
-    encL += chB ? -1 : 1;
+    encL += chB ? 1 : -1;   // was -1 : 1
 }
 
 void onEncR() {
     bool chB = (digitalRead(ENC_R_B) == HIGH);
     encR += chB ? 1 : -1;
 }
+
 
 // ── IMU ───────────────────────────────────────────────────────────────────────
 Adafruit_LSM6DSOX imu;
@@ -101,7 +102,7 @@ void setup() {
     pinMode(MOTOR_R_PH, OUTPUT);
     pinMode(MOTOR_R_EN, OUTPUT);
 
-    analogWriteFreq(20000); // 20kHz
+    analogWriteFreq(20000);
 
     stopMotors();
 

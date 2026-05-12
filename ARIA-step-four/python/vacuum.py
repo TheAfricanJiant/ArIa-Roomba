@@ -1,7 +1,42 @@
 import logging
+import threading
+import time
 from arduino.app_utils import Bridge
 
 log = logging.getLogger(__name__)
+
+_lock = threading.Lock()
+_latest_pwm = 0
+_sent_pwm = None
+_worker_started = False
+
+
+def _vacuum_worker():
+    """Send only the newest requested PWM so slider drags do not queue stale values."""
+    global _sent_pwm
+    while True:
+        with _lock:
+            pwm = _latest_pwm
+        if pwm != _sent_pwm:
+            try:
+                Bridge.call("set_vacuum_pwm", pwm)
+                _sent_pwm = pwm
+                log.debug("Vacuum RPC sent: pwm=%d", pwm)
+            except Exception as e:
+                log.warning("Vacuum RPC failed: %s", e)
+                time.sleep(0.2)
+        time.sleep(0.02)
+
+
+def _ensure_worker():
+    global _worker_started
+    if _worker_started:
+        return
+    with _lock:
+        if _worker_started:
+            return
+        threading.Thread(target=_vacuum_worker, daemon=True).start()
+        _worker_started = True
 
 
 def set_vacuum(pwm: int) -> int:
@@ -17,17 +52,13 @@ def set_vacuum(pwm: int) -> int:
         pwm_i = 0
     pwm_i = max(0, min(255, pwm_i))
 
-    try:
-        Bridge.call("set_vacuum_pwm", pwm_i)
-        log.debug("Vacuum RPC sent: pwm=%d", pwm_i)
-    except Exception as e:
-        # If Bridge isn't available (e.g. running without the UNO Q sketch),
-        # we keep the app alive and just log.
-        log.warning("Vacuum RPC failed: %s", e)
+    _ensure_worker()
+    with _lock:
+        global _latest_pwm
+        _latest_pwm = pwm_i
 
     return pwm_i
 
 
 def off() -> int:
     return set_vacuum(0)
-

@@ -703,15 +703,23 @@ def manual_drive_ui(client, data):
         motor.send_motor_cmd(0, 0)
     elif action == "forward":
         state["motors_on"] = True
+        state["navigating"] = False
+        nav.clear_goal()
         motor.send_motor_cmd(spd, spd)
     elif action == "backward":
         state["motors_on"] = True
+        state["navigating"] = False
+        nav.clear_goal()
         motor.send_motor_cmd(-spd, -spd)
     elif action == "left":
         state["motors_on"] = True
+        state["navigating"] = False
+        nav.clear_goal()
         motor.send_motor_cmd(-spd, spd)
     elif action == "right":
         state["motors_on"] = True
+        state["navigating"] = False
+        nav.clear_goal()
         motor.send_motor_cmd(spd, -spd)
     else:
         return
@@ -1070,5 +1078,4 @@ threading.Thread(target=navigation_loop, daemon=True).start()
 camera.start_frame_grabber()  # auto-discovers MJPEG/WebSocket at port 4912
 threading.Thread(target=_probe_camera_stream, daemon=True).start()
 App.run()
-
 

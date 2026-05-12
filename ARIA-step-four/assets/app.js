@@ -196,9 +196,32 @@ document.addEventListener('DOMContentLoaded', () => {
     speedSlider.addEventListener('input',  (e) => { speedVal.textContent = e.target.value; });
     speedSlider.addEventListener('change', (e) => socket.emit('set_speed', { speed: parseInt(e.target.value) }));
 
+    function makeThrottledEmitter(eventName, key, delayMs = 50) {
+        let timer = null;
+        let latest = null;
+        return (value) => {
+            latest = value;
+            if (timer) return;
+            socket.emit(eventName, { [key]: latest });
+            timer = setTimeout(() => {
+                timer = null;
+                if (latest !== value) {
+                    socket.emit(eventName, { [key]: latest });
+                }
+            }, delayMs);
+        };
+    }
+
+    const emitVacuum = makeThrottledEmitter('set_vacuum', 'pwm');
+    const emitBrush = makeThrottledEmitter('set_brush', 'speed');
+
     if (vacuumSlider) {
-        vacuumSlider.addEventListener('input', (e) => { vacuumVal.textContent = e.target.value; });
-        vacuumSlider.addEventListener('change', (e) => socket.emit('set_vacuum', { pwm: parseInt(e.target.value) }));
+        vacuumSlider.addEventListener('input', (e) => {
+            const pwm = parseInt(e.target.value) || 0;
+            vacuumVal.textContent = pwm.toString();
+            emitVacuum(pwm);
+        });
+        vacuumSlider.addEventListener('change', (e) => emitVacuum(parseInt(e.target.value) || 0));
     }
     if (vacuumToggleBtn) {
         vacuumToggleBtn.addEventListener('click', () => {
@@ -206,14 +229,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const next = cur > 0 ? 0 : 255;
             if (vacuumSlider) { vacuumSlider.value = next; }
             if (vacuumVal) { vacuumVal.textContent = next.toString(); }
-            socket.emit('set_vacuum', { pwm: next });
+            emitVacuum(next);
         });
     }
 
     // ── Brush slider & toggle ──
     if (brushSlider) {
-        brushSlider.addEventListener('input', (e) => { if (brushVal) brushVal.textContent = e.target.value; });
-        brushSlider.addEventListener('change', (e) => socket.emit('set_brush', { speed: parseInt(e.target.value) }));
+        brushSlider.addEventListener('input', (e) => {
+            const speed = parseInt(e.target.value) || 0;
+            if (brushVal) brushVal.textContent = speed.toString();
+            emitBrush(speed);
+        });
+        brushSlider.addEventListener('change', (e) => emitBrush(parseInt(e.target.value) || 0));
     }
     if (brushToggleBtn) {
         brushToggleBtn.addEventListener('click', () => {
@@ -221,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const next = cur !== 0 ? 0 : 80;
             if (brushSlider) brushSlider.value = next;
             if (brushVal) brushVal.textContent = next;
-            socket.emit('set_brush', { speed: next });
+            emitBrush(next);
             brushToggleBtn.textContent = next !== 0 ? '🪥 Brush ON' : '🪥 Brush OFF';
             brushToggleBtn.style.background = next !== 0 ? '#4CAF50' : '#5d4037';
         });
@@ -234,10 +261,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function addMomentary(btn, dir) {
         if (!btn) return;
-        btn.addEventListener('pointerdown', (e) => { btn.setPointerCapture(e.pointerId); sendDrive(dir); });
-        btn.addEventListener('pointerup',     () => sendDrive('stop'));
-        btn.addEventListener('pointercancel', () => sendDrive('stop'));
-        btn.addEventListener('pointerleave',  () => sendDrive('stop'));
+        let activePointer = null;
+        const stop = () => {
+            if (activePointer === null) return;
+            activePointer = null;
+            sendDrive('stop');
+        };
+        btn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            activePointer = e.pointerId;
+            btn.setPointerCapture(e.pointerId);
+            sendDrive(dir);
+        });
+        btn.addEventListener('pointerup', stop);
+        btn.addEventListener('pointercancel', stop);
+        btn.addEventListener('lostpointercapture', stop);
     }
     addMomentary(driveForwardBtn,  'forward');
     addMomentary(driveBackwardBtn, 'backward');

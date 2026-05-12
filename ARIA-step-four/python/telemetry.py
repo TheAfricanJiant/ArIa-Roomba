@@ -28,6 +28,14 @@ US_POLL_INTERVAL_S      = 0.2   # poll UNO Q ultrasonics every 200ms
 US_MAX_VALID_CM         = 380.0
 MAP_PUSH_INTERVAL_S     = 1.0
 
+# XRW reports raw encoder counts as T,encL,encR,...
+# On this robot the left wheel is wired to the XRP Motor 4 port, and a
+# hand-forward turn makes its raw count decrease.  ARIA's odometry expects
+# forward wheel travel to be positive for both sides, so correct the sign here
+# before EKF/dead-reckoning sees the counts.
+ENCODER_L_SIGN          = -1
+ENCODER_R_SIGN          = 1
+
 
 # ── Simple dead-reckoning fallback (no dependencies) ─────────────────────────
 class SimpleDeadReckoning:
@@ -251,8 +259,8 @@ def _parse_line(line: str) -> bool:
     if len(parts) < 9:
         return False
     try:
-        telemetry["enc_l"]   = int(parts[1])
-        telemetry["enc_r"]   = int(parts[2])
+        telemetry["enc_l"]   = ENCODER_L_SIGN * int(parts[1])
+        telemetry["enc_r"]   = ENCODER_R_SIGN * int(parts[2])
         telemetry["accel_x"] = float(parts[3])
         telemetry["accel_y"] = float(parts[4])
         telemetry["accel_z"] = float(parts[5])
