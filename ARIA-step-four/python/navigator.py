@@ -10,26 +10,22 @@ _cached_nav = None
 
 
 class Navigator:
-    """Forward-only pure-pursuit waypoint follower.
-
-    The old follower pivoted in place for large heading errors. On the real
-    chassis that could become a fast 360-degree spin when heading feedback was
-    noisy or delayed. This controller never commands opposite wheel directions
-    during waypoint following; it always crawls forward and bends toward a
-    lookahead point.
-    """
+    """EKF-feedback waypoint follower for a differential-drive robot."""
 
     def __init__(self):
         self.goal = None
         self.waypoints = []
         self.base_speed = 140
-        self.arrival_dist_cm = 12.0
-        self.lookahead_cm = 45.0
-        self.slow_radius_cm = 85.0
-        self.min_drive_pwm = 55
+        self.arrival_dist_cm = 18.0
+        self.lookahead_cm = 32.0
+        self.slow_radius_cm = 90.0
+        self.min_drive_pwm = 48
         self.max_drive_pwm = 190
-        self.min_inner_pwm = 18
-        self.stall_timeout_s = 8.0
+        self.min_turn_pwm = 45
+        self.max_turn_pwm = 135
+        self.align_error_rad = math.radians(55)
+        self.close_radius_cm = 38.0
+        self.stall_timeout_s = 5.0
         self._stall_since = 0.0
         self._last_distance = float("inf")
         self._last_progress_ts = time.monotonic()
@@ -115,42 +111,54 @@ class Navigator:
             self._pop_next_goal()
             final_distance = self._distance_to_goal(current_x, current_y, self.goal)
 
-        if final_distance < self._last_distance - 1.0:
+        if final_distance < self._last_distance - 0.6:
             self._last_progress_ts = now
             self._stall_since = 0.0
-        elif final_distance < self.arrival_dist_cm * 2.5:
+        elif final_distance < self.close_radius_cm:
             if self._stall_since == 0.0:
                 self._stall_since = now
             elif now - self._stall_since > self.stall_timeout_s:
-                log.warning("Navigator: close-range stall at %.1f cm; declaring arrived.", final_distance)
+                log.warning("Navigator: close-range stall at %.1f cm; accepting waypoint.", final_distance)
                 self.clear_goal()
-                self._debug = self._empty_debug("stalled-arrived")
+                self._debug = self._empty_debug("stalled-accepted")
                 return 0, 0, True
         self._last_distance = final_distance
 
         target = self._lookahead_target(current_x, current_y)
         dx = target[0] - current_x
         dy = target[1] - current_y
-        target_distance = max(1.0, math.hypot(dx, dy))
         heading_error = _wrap_angle(math.atan2(dy, dx) - current_theta)
 
-        speed_scale = max(0.38, min(1.0, final_distance / self.slow_radius_cm))
-        forward = max(self.min_drive_pwm, min(self.base_speed, int(self.base_speed * speed_scale)))
+        abs_error = abs(heading_error)
+        max_turn = min(self.max_turn_pwm, max(self.min_turn_pwm, int(self.base_speed * 0.8)))
+        turn = _clamp(heading_error * 95.0, -max_turn, max_turn)
+        if 0 < abs(turn) < self.min_turn_pwm:
+            turn = math.copysign(self.min_turn_pwm, turn)
 
-        # Pure-pursuit curvature proxy. Clamp hard so both wheels keep moving
-        # forward instead of pivoting in opposite directions.
-        turn_ratio = max(-0.82, min(0.82, 1.55 * math.sin(heading_error)))
-        if abs(heading_error) > math.radians(115):
-            forward = max(self.min_drive_pwm, int(forward * 0.55))
-            turn_ratio = 0.82 if heading_error > 0 else -0.82
+        if abs_error > self.align_error_rad and final_distance > self.close_radius_cm:
+            forward = 0
+            left = -turn
+            right = turn
+            mode = "aligning"
+        else:
+            speed_scale = max(0.30, min(1.0, final_distance / self.slow_radius_cm))
+            heading_scale = max(0.35, math.cos(min(abs_error, math.radians(70))))
+            forward = int(self.base_speed * speed_scale * heading_scale)
+            forward = max(self.min_drive_pwm, min(self.base_speed, forward))
 
-        left = forward * (1.0 - turn_ratio)
-        right = forward * (1.0 + turn_ratio)
-        left = max(self.min_inner_pwm, min(self.max_drive_pwm, left))
-        right = max(self.min_inner_pwm, min(self.max_drive_pwm, right))
+            if final_distance < self.close_radius_cm:
+                forward = min(forward, 70)
+                turn = _clamp(turn, -70, 70)
+
+            left = forward - turn
+            right = forward + turn
+            mode = "tracking"
+
+        left = _clamp(left, -self.max_drive_pwm, self.max_drive_pwm)
+        right = _clamp(right, -self.max_drive_pwm, self.max_drive_pwm)
 
         self._debug = {
-            "state": "tracking",
+            "state": mode,
             "goal": {"x": round(self.goal[0], 1), "y": round(self.goal[1], 1)},
             "target": {"x": round(target[0], 1), "y": round(target[1], 1)},
             "distance_cm": round(final_distance, 1),
@@ -159,7 +167,7 @@ class Navigator:
             "right_pwm": int(right),
             "queued": len(self.waypoints),
             "lookahead_cm": self.lookahead_cm,
-            "mode": "forward-only pure pursuit",
+            "mode": "ekf go-to-goal",
         }
         return int(left), int(right), False
 
@@ -189,9 +197,13 @@ class Navigator:
             "right_pwm": 0,
             "queued": 0,
             "lookahead_cm": self.lookahead_cm,
-            "mode": "forward-only pure pursuit",
+            "mode": "ekf go-to-goal",
         }
 
 
 def _wrap_angle(angle: float) -> float:
     return (angle + math.pi) % (2 * math.pi) - math.pi
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
