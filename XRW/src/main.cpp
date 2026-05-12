@@ -42,8 +42,17 @@
 volatile long encL = 0;
 volatile long encR = 0;
 
-void onEncL() { encL += (digitalRead(MOTOR_L_PH) == HIGH) ? 1 : -1; }
-void onEncR() { encR += (digitalRead(MOTOR_R_PH) == HIGH) ? 1 : -1; }
+void onEncL() {
+    bool ph = (digitalRead(MOTOR_L_PH) == HIGH);
+    if (MOTOR_L_INVERT) ph = !ph;
+    encL += ph ? 1 : -1;
+}
+
+void onEncR() {
+    bool ph = (digitalRead(MOTOR_R_PH) == HIGH);
+    if (MOTOR_R_INVERT) ph = !ph;
+    encR += ph ? 1 : -1;
+}
 
 // ── IMU ───────────────────────────────────────────────────────────────────────
 Adafruit_LSM6DSOX imu;
