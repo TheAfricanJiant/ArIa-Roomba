@@ -1,149 +1,163 @@
-﻿#include <Arduino.h>
-#include <driver/i2s.h>
-#pragma GCC diagnostic ignored "-Wcpp"
+/**
+ * XRP Controller – Motors + Encoders + IMU
+ *
+ * Receives commands over serial (via socat TCP bridge on port 5000):
+ *   M,<left>,<right>\n   — set motor speeds (-255..255)
+ *   R\n                   — reset encoder counts to zero
+ *
+ * Publishes telemetry at 100ms:
+ *   T,encL,encR,ax,ay,az,gx,gy,gz\n
+ *
+ * Motor direction:
+ *   Set MOTOR_L_INVERT / MOTOR_R_INVERT to true if a motor runs backwards.
+ *   Positive values = forward for that wheel.
+ */
 
-#define I2S_WS    7
-#define I2S_BCK   8
-#define I2S_MCLK  9
-#define I2S_DIN   44
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_LSM6DSOX.h>
+#include <stdarg.h>
 
-#define SAMPLE_RATE          48000
-#define RECORD_RATE          16000
-#define DURATION_SEC         10
-#define DOWNSAMPLE           3
-#define OUT_SAMPLES          (RECORD_RATE * DURATION_SEC)
+#define MOTOR_L_PH 6
+#define MOTOR_L_EN 7
+#define MOTOR_R_PH 14
+#define MOTOR_R_EN 15
+#define ENC_L_A    4
+#define ENC_R_A    12
 
-// ── FIR low-pass filter ───────────────────────────────────────────────────────
-// 15-tap, Hamming window, cutoff 7kHz @ 48kHz input
-// Keeps full vacuum motor range (100Hz–6kHz), cuts aliasing above 8kHz
-// Safe for dirt impact transients — nothing useful lives above 7kHz on a vacuum
-#define FIR_TAPS 15
-static const float fir_coeffs[FIR_TAPS] = {
-    -0.00440f, -0.00940f, -0.00929f,  0.01137f,  0.06392f,
-     0.13447f,  0.18905f,  0.21008f,  0.18905f,  0.13447f,
-     0.06392f,  0.01137f, -0.00929f, -0.00940f, -0.00440f
-};
-static float fir_buf[FIR_TAPS] = {0};
+#define IMU_SDA_PIN      18
+#define IMU_SCL_PIN      19
+#define IMU_I2C_ADDRESS  0x6B
 
-float fir_filter(float sample) {
-    // Shift history
-    for (int i = FIR_TAPS - 1; i > 0; i--) {
-        fir_buf[i] = fir_buf[i - 1];
-    }
-    fir_buf[0] = sample;
-    // Convolve
-    float acc = 0.0f;
-    for (int i = 0; i < FIR_TAPS; i++) {
-        acc += fir_coeffs[i] * fir_buf[i];
-    }
-    return acc;
+// ── Direction invert flags ───────────────────────────────────────────────────
+// Set to true if that motor runs backwards when commanded forward.
+// Flip MOTOR_L_INVERT if left motor is wrong; MOTOR_R_INVERT for right.
+#define MOTOR_L_INVERT true
+#define MOTOR_R_INVERT true
+
+// ── Encoders ─────────────────────────────────────────────────────────────────
+volatile long encL = 0;
+volatile long encR = 0;
+volatile int8_t dirL = 1;
+volatile int8_t dirR = 1;
+
+void onEncL() { encL += dirL; }
+void onEncR() { encR += dirR; }
+
+// ── IMU ───────────────────────────────────────────────────────────────────────
+Adafruit_LSM6DSOX imu;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+void printSerialf(const char* fmt, ...) {
+    char buf[200];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    Serial.print(buf);
 }
 
-// ── Forward declaration ───────────────────────────────────────────────────────
-void record_and_send();
+// ── Motor control ─────────────────────────────────────────────────────────────
+void setMotors(int l, int r) {
+    l = constrain(l, -255, 255);
+    r = constrain(r, -255, 255);
+
+    // Apply inversion flags
+    if (MOTOR_L_INVERT) l = -l;
+    if (MOTOR_R_INVERT) r = -r;
+
+    // Store direction for encoder sign (after inversion so encoders track real motion)
+    dirL = (l >= 0) ? 1 : -1;
+    dirR = (r >= 0) ? 1 : -1;
+
+    digitalWrite(MOTOR_L_PH, l >= 0 ? HIGH : LOW);
+    digitalWrite(MOTOR_R_PH, r >= 0 ? HIGH : LOW);
+    analogWrite(MOTOR_L_EN, abs(l));
+    analogWrite(MOTOR_R_EN, abs(r));
+}
+
+void stopMotors() {
+    analogWrite(MOTOR_L_EN, 0);
+    analogWrite(MOTOR_R_EN, 0);
+    dirL = 1; dirR = 1;
+}
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
+unsigned long lastTelemetryTime = 0;
+
 void setup() {
-    Serial.begin(921600);
-    delay(2000);
+    Serial.begin(115200);
+    while (!Serial) delay(10);
 
-    i2s_config_t config = {
-        .mode                 = (i2s_mode_t)(I2S_MODE_SLAVE | I2S_MODE_RX),
-        .sample_rate          = SAMPLE_RATE,
-        .bits_per_sample      = I2S_BITS_PER_SAMPLE_32BIT,
-        .channel_format       = I2S_CHANNEL_FMT_RIGHT_LEFT,
-        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-        .intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count        = 8,
-        .dma_buf_len          = 512,
-        .use_apll             = false,
-        .tx_desc_auto_clear   = false,
-        .fixed_mclk           = 0
-    };
+    pinMode(MOTOR_L_PH, OUTPUT); pinMode(MOTOR_L_EN, OUTPUT);
+    pinMode(MOTOR_R_PH, OUTPUT); pinMode(MOTOR_R_EN, OUTPUT);
+    stopMotors();
 
-    i2s_pin_config_t pins = {
-        .mck_io_num   = I2S_MCLK,
-        .bck_io_num   = I2S_BCK,
-        .ws_io_num    = I2S_WS,
-        .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num  = I2S_DIN
-    };
+    pinMode(ENC_L_A, INPUT_PULLUP);
+    pinMode(ENC_R_A, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(ENC_L_A), onEncL, RISING);
+    attachInterrupt(digitalPinToInterrupt(ENC_R_A), onEncR, RISING);
 
-    if (i2s_driver_install(I2S_NUM_0, &config, 0, NULL) != ESP_OK) {
-        Serial.println("ERROR: I2S install failed");
-        return;
-    }
-    if (i2s_set_pin(I2S_NUM_0, &pins) != ESP_OK) {
-        Serial.println("ERROR: I2S set pin failed");
-        return;
-    }
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, LOW);
 
-    i2s_zero_dma_buffer(I2S_NUM_0);
-    Serial.println("READY");
-}
+    Wire1.setSDA(IMU_SDA_PIN);
+    Wire1.setSCL(IMU_SCL_PIN);
+    Wire1.begin();
 
-// ── Record & send ─────────────────────────────────────────────────────────────
-void record_and_send() {
-    // Clear filter history before each new clip
-    memset(fir_buf, 0, sizeof(fir_buf));
-
-    const int CHUNK_FRAMES       = 64;
-    int32_t   raw[CHUNK_FRAMES * 2];
-    int16_t   out_buf[512];
-    int       out_idx            = 0;
-    int       frame_count        = 0;
-    int       skip               = 0;
-    int       total_input_frames = OUT_SAMPLES * DOWNSAMPLE;  // 480000 frames
-
-    while (frame_count < total_input_frames) {
-        int    frames_to_read = min(CHUNK_FRAMES, total_input_frames - frame_count);
-        size_t bytes_read     = 0;
-
-        i2s_read(I2S_NUM_0, raw, frames_to_read * 8, &bytes_read, portMAX_DELAY);
-
-        int got_frames = bytes_read / 8;
-
-        for (int i = 0; i < got_frames; i++) {
-            // Left channel — shift 24-bit audio out of the 32-bit I2S word
-            // Adjust >> 8 if clipping: try >> 9 or >> 10
-            // Adjust >> 8 if too quiet: try >> 7
-            float sample = (float)(raw[i * 2] >> 8);
-
-            // Run every sample through the FIR BEFORE downsampling
-            // This is critical — filter first, then drop samples
-            float filtered = fir_filter(sample);
-
-            // Keep every 3rd sample (now alias-free)
-            if (skip == 0) {
-                int32_t clamped    = (int32_t)max(-32768.0f, min(32767.0f, filtered));
-                out_buf[out_idx++] = (int16_t)clamped;
-
-                if (out_idx == 512) {
-                    Serial.write((uint8_t*)out_buf, 512 * 2);
-                    out_idx = 0;
-                }
-            }
-            skip = (skip + 1) % DOWNSAMPLE;
+    Serial.print("LSM6DSOX init ... ");
+    if (!imu.begin_I2C(IMU_I2C_ADDRESS, &Wire1)) {
+        Serial.println("FAILED");
+        while (true) {
+            digitalWrite(LED_BUILTIN, HIGH); delay(200);
+            digitalWrite(LED_BUILTIN, LOW);  delay(200);
         }
-
-        frame_count += got_frames;
     }
+    Serial.println("OK");
 
-    // Flush any remaining samples
-    if (out_idx > 0) {
-        Serial.write((uint8_t*)out_buf, out_idx * 2);
-    }
-
-    Serial.println("\nDONE");
+    imu.setAccelRange(LSM6DS_ACCEL_RANGE_2_G);
+    imu.setAccelDataRate(LSM6DS_RATE_104_HZ);
+    imu.setGyroRange(LSM6DS_GYRO_RANGE_250_DPS);
+    imu.setGyroDataRate(LSM6DS_RATE_104_HZ);
 }
 
-// ── Loop ──────────────────────────────────────────────────────────────────────
+// ── Main loop ─────────────────────────────────────────────────────────────────
 void loop() {
-    if (Serial.available()) {
+    // ── Handle incoming commands ──
+    if (Serial.available() > 0) {
         String cmd = Serial.readStringUntil('\n');
         cmd.trim();
-        if (cmd == "START") {
-            record_and_send();
+
+        if (cmd.startsWith("M,")) {
+            // M,left,right
+            int c1 = cmd.indexOf(',');
+            int c2 = cmd.indexOf(',', c1 + 1);
+            if (c1 != -1 && c2 != -1) {
+                int left  = cmd.substring(c1 + 1, c2).toInt();
+                int right = cmd.substring(c2 + 1).toInt();
+                setMotors(left, right);
+            }
+        } else if (cmd == "R" || cmd.startsWith("R,")) {
+            // Encoder reset — zero both counters
+            noInterrupts();
+            encL = 0;
+            encR = 0;
+            interrupts();
+            Serial.println("R,OK");  // ack
         }
+    }
+
+    // ── Publish telemetry every 100ms ──
+    unsigned long now = millis();
+    if (now - lastTelemetryTime >= 100) {
+        lastTelemetryTime = now;
+
+        sensors_event_t accel, gyro, temp;
+        imu.getEvent(&accel, &gyro, &temp);
+
+        printSerialf("T,%ld,%ld,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                     encL, encR,
+                     accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
+                     gyro.gyro.x, gyro.gyro.y, gyro.gyro.z);
     }
 }

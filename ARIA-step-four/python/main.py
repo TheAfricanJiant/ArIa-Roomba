@@ -13,6 +13,24 @@ import threading, logging, json, os, time, math
 
 import serial_bridge, motor, telemetry, navigator, camera, vacuum
 
+# ── Full navigation stack (CleaningStateMachine + A*) ────────────────────────
+try:
+    from aria.navigation import (
+        BoustrophedonPlanner, PotentialFieldSteering, CleaningStateMachine
+    )
+    from aria import OccupancyGrid as _AGrid
+    _nav_grid    = _AGrid()
+    _boustro     = BoustrophedonPlanner(_nav_grid)
+    _steering    = PotentialFieldSteering(max_pwm=200, base_speed=160)
+    _clean_sm    = CleaningStateMachine(_nav_grid, _boustro, _steering)
+    _FULL_NAV    = True
+    log_tmp = __import__('logging').getLogger('ARIA')
+    log_tmp.info('Full CleaningStateMachine loaded.')
+except Exception as _e:
+    _FULL_NAV = False
+    _clean_sm = None
+    __import__('logging').getLogger('ARIA').warning(f'CleaningStateMachine not loaded: {_e}')
+
 from arduino.app_bricks.video_objectdetection import VideoObjectDetection
 from datetime import datetime, timezone
 
@@ -29,11 +47,13 @@ camera.register_stream(detection_stream)
 
 # ── Robot state ───────────────────────────────────────────────────────────────
 state = {
-    "motors_on": False,
-    "speed": 160,
-    "navigating": False,
-    "mode": "manual",
-    "vacuum": 0,   # 0-255 PWM
+    "motors_on":  False,
+    "speed":       160,
+    "navigating":  False,
+    "mode":        "manual",
+    "vacuum":      0,    # 0-255 PWM
+    "brush":       0,    # -100..100
+    "auto_clean":  False,
 }
 nav   = navigator.Navigator()
 serial_bridge.connect()
@@ -94,37 +114,67 @@ def detect_objects(sender: Sender, message: Message, photo: bytes, filename: str
 # ══════════════════════════════════════════════════════════════════════════════
 # MOTOR CONTROL
 # ══════════════════════════════════════════════════════════════════════════════
+# ── Encoder-feedback momentary drive ─────────────────────────────────────────
+def _drive_distance_cm(direction: int, target_cm: float, spd: int):
+    """Drive until EKF reports target_cm moved, then stop. Max 5s safety."""
+    start = telemetry.get_pose()
+    sx, sy = start["x_cm"], start["y_cm"]
+    deadline = time.time() + 5.0
+    motor.send_motor_cmd(direction * spd, direction * spd)
+    while time.time() < deadline:
+        p = telemetry.get_pose()
+        moved = math.hypot(p["x_cm"] - sx, p["y_cm"] - sy)
+        if moved >= target_cm:
+            break
+        time.sleep(0.05)
+    motor.send_motor_cmd(0, 0)
+    state["motors_on"] = False
+
+def _spin_degrees(direction: int, deg: float, spd: int):
+    """Spin until EKF heading changes by deg. Max 3s safety."""
+    start_theta = telemetry.get_pose()["theta_rad"]
+    target_rad  = math.radians(deg)
+    deadline    = time.time() + 3.0
+    motor.send_motor_cmd(direction * spd, -direction * spd)
+    while time.time() < deadline:
+        curr = telemetry.get_pose()["theta_rad"]
+        turned = abs((curr - start_theta + math.pi) % (2*math.pi) - math.pi)
+        if turned >= target_rad:
+            break
+        time.sleep(0.05)
+    motor.send_motor_cmd(0, 0)
+    state["motors_on"] = False
+
 def forward_cmd(sender: Sender, message: Message):
     args = message.text.strip().split()
-    spd = int(args[1]) if len(args) > 1 and args[1].isdigit() else state["speed"]
-    spd = max(0, min(255, spd))
+    # /forward [cm]   — default 30cm
+    cm  = float(args[1]) if len(args) > 1 else 30.0
+    spd = state["speed"]
     state["motors_on"] = True
-    motor.send_motor_cmd(spd, spd)
-    sender.reply(f"⬆️ Driving forward at speed {spd}")
+    sender.reply(f"⬆️ Moving forward {cm} cm…")
+    threading.Thread(target=_drive_distance_cm, args=(1, cm, spd), daemon=True).start()
 
 def backward_cmd(sender: Sender, message: Message):
     args = message.text.strip().split()
-    spd = int(args[1]) if len(args) > 1 and args[1].isdigit() else state["speed"]
-    spd = max(0, min(255, spd))
+    cm  = float(args[1]) if len(args) > 1 else 30.0
+    spd = state["speed"]
     state["motors_on"] = True
-    motor.send_motor_cmd(-spd, -spd)
-    sender.reply(f"⬇️ Driving backward at speed {spd}")
+    sender.reply(f"⬇️ Moving backward {cm} cm…")
+    threading.Thread(target=_drive_distance_cm, args=(-1, cm, spd), daemon=True).start()
 
 def left_cmd(sender: Sender, message: Message):
-    spd = state["speed"]
+    args = message.text.strip().split()
+    deg = float(args[1]) if len(args) > 1 else 90.0
     state["motors_on"] = True
-    motor.send_motor_cmd(-spd, spd)
-    time.sleep(0.4)
-    motor.send_motor_cmd(0, 0)
-    sender.reply("↩️ Spun left")
+    sender.reply(f"↩️ Spinning left {deg}°…")
+    threading.Thread(target=_spin_degrees, args=(1, deg, state["speed"]), daemon=True).start()
 
 def right_cmd(sender: Sender, message: Message):
-    spd = state["speed"]
+    args = message.text.strip().split()
+    deg = float(args[1]) if len(args) > 1 else 90.0
     state["motors_on"] = True
-    motor.send_motor_cmd(spd, -spd)
-    time.sleep(0.4)
-    motor.send_motor_cmd(0, 0)
-    sender.reply("↪️ Spun right")
+    sender.reply(f"↪️ Spinning right {deg}°…")
+    threading.Thread(target=_spin_degrees, args=(-1, deg, state["speed"]), daemon=True).start()
 
 def stop_cmd(sender: Sender, message: Message):
     state["motors_on"] = False
@@ -468,13 +518,48 @@ def vacuum_cmd(sender: Sender, message: Message):
     sender.reply(f"🌀 Vacuum PWM set to *{pwm}*")
 
 def brush_cmd(sender: Sender, message: Message):
-    sender.reply("🪥 Brush hardware not yet wired.")
+    args = message.text.strip().split()
+    spd = int(args[1]) if len(args) > 1 else None
+    if spd is None:
+        sender.reply("Usage: /brush <-100..100>  (0=stop, negative=CW, positive=CCW)")
+        return
+    spd = max(-100, min(100, spd))
+    try:
+        from arduino.app_utils import Bridge
+        Bridge.call("set_brush_servo", spd)
+        state["brush"] = spd
+        ui.send_message("state_update", state)
+        sender.reply(f"🪥 Brush servo set to {spd}")
+    except Exception as e:
+        sender.reply(f"🪥 Brush command sent (speed={spd}). Note: {e}")
+
+_log_lines: list = []
+_alerts_enabled = False
+
+class _TgLogHandler(__import__('logging').Handler):
+    def emit(self, record):
+        _log_lines.append(self.format(record))
+        if len(_log_lines) > 80: _log_lines.pop(0)
+        if _alerts_enabled and record.levelno >= __import__('logging').WARNING:
+            try: bot.broadcast(f"⚠️ ARIA: {self.format(record)}")
+            except: pass
+
+_tg_handler = _TgLogHandler()
+_tg_handler.setFormatter(__import__('logging').Formatter("%(asctime)s %(levelname)s: %(message)s"))
+__import__('logging').getLogger().addHandler(_tg_handler)
 
 def log_cmd(sender: Sender, message: Message):
-    sender.reply("📋 Log streaming not yet implemented.")
+    args = message.text.strip().split()
+    n = int(args[1]) if len(args) > 1 and args[1].isdigit() else 20
+    n = max(1, min(50, n))
+    if not _log_lines:
+        sender.reply("📋 No log lines yet."); return
+    sender.reply("📋 *Recent logs:*\n" + "\n".join(l[:120] for l in _log_lines[-n:]))
 
 def alerts_cmd(sender: Sender, message: Message):
-    sender.reply("🔔 Alert system not yet implemented.")
+    global _alerts_enabled
+    _alerts_enabled = not _alerts_enabled
+    sender.reply(f"🔔 Push alerts {'✅ ON' if _alerts_enabled else '❌ OFF'}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -582,24 +667,58 @@ def manual_drive_ui(client, data):
 
 # ══════════════════════════════════════════════════════════════════════════════
 # NAVIGATION LOOP (background thread)
+# Uses CleaningStateMachine when auto_clean=True; simple Navigator otherwise.
+# Both paths use EKF pose (encoder + IMU) for closed-loop control.
 # ══════════════════════════════════════════════════════════════════════════════
 def navigation_loop():
     last_count = -1
     while True:
-        if state["navigating"] and state["motors_on"]:
+        try:
             pose = telemetry.get_pose()
-            if pose:
-                l, r, arrived = nav.step(pose["x_cm"], pose["y_cm"], pose["theta_rad"])
-                motor.send_motor_cmd(l, r)
+            us   = telemetry.get_ultrasonics()
+
+            # ── Auto clean mode: full state machine ──
+            if state.get("auto_clean") and _FULL_NAV and _clean_sm:
+                cmd = _clean_sm.step(
+                    pose["x_cm"], pose["y_cm"], pose["theta_rad"],
+                    us, battery_pct=100.0
+                )
+                motor.send_motor_cmd(cmd.left, cmd.right)
+                vacuum.set_vacuum(cmd.vacuum)
+                try:
+                    from arduino.app_utils import Bridge
+                    Bridge.call("set_brush_servo", 60 if cmd.brush > 0 else 0)
+                except Exception:
+                    pass
+                ui.send_message("clean_state", {"state": _clean_sm.state_name})
+
+            # ── Manual nav mode: simple P-controller with EKF feedback ──
+            elif state["navigating"] and state["motors_on"]:
+                l, r, arrived = nav.step(
+                    pose["x_cm"], pose["y_cm"], pose["theta_rad"]
+                )
+                # Obstacle safety override: stop if front too close
+                if us.get("front", 999) < 15:
+                    motor.send_motor_cmd(0, 0)
+                else:
+                    motor.send_motor_cmd(l, r)
+
                 count = len(nav.waypoints)
                 if count != last_count:
-                    path = ([{"x": nav.goal[0], "y": nav.goal[1]}] if nav.goal else [])
-                    path += [{"x":p[0],"y":p[1]} for p in nav.waypoints]
-                    ui.send_message("path_update", path); last_count = count
+                    path  = ([{"x": nav.goal[0], "y": nav.goal[1]}] if nav.goal else [])
+                    path += [{"x": p[0], "y": p[1]} for p in nav.waypoints]
+                    ui.send_message("path_update", path)
+                    last_count = count
+
                 if arrived:
-                    state["navigating"] = False; state["motors_on"] = False
-                    motor.send_motor_cmd(0, 0); ui.send_message("state_update", state)
+                    state["navigating"] = False
+                    state["motors_on"]  = False
+                    motor.send_motor_cmd(0, 0)
+                    ui.send_message("state_update", state)
                     ui.send_message("path_update", [])
+
+        except Exception as _nav_e:
+            log.error(f"navigation_loop error: {_nav_e}")
         time.sleep(0.05)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -746,6 +865,50 @@ ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
 ui.on_message("camera_record",     ui_record)
 ui.on_message("frame_from_browser", frame_from_browser)
+
+# Encoder reset ("Set as Home")
+def ui_reset_encoders(client, data):
+    telemetry.reset_encoders()
+    if _FULL_NAV and _clean_sm:
+        _clean_sm.stop()
+    nav.clear_goal()
+    state["navigating"] = False
+    state["motors_on"]  = False
+    state["auto_clean"] = False
+    motor.send_motor_cmd(0, 0)
+    ui.send_message("state_update", state)
+    ui.send_message("path_update", [])
+    ui.send_message("map_update",  telemetry.get_grid_snapshot())
+    log.info("Encoders reset to home by web UI.")
+
+# Brush servo from web UI
+def ui_set_brush(client, data):
+    spd = int(data.get("speed", 0))
+    spd = max(-100, min(100, spd))
+    state["brush"] = spd
+    try:
+        from arduino.app_utils import Bridge
+        Bridge.call("set_brush_servo", spd)
+    except Exception as e:
+        log.warning(f"Brush RPC: {e}")
+    ui.send_message("state_update", state)
+
+# Toggle auto-clean mode
+def ui_toggle_auto_clean(client, data):
+    if state.get("auto_clean"):
+        state["auto_clean"] = False
+        if _FULL_NAV and _clean_sm: _clean_sm.stop()
+        motor.send_motor_cmd(0, 0)
+    else:
+        state["auto_clean"] = True
+        if _FULL_NAV and _clean_sm:
+            pose = telemetry.get_pose()
+            _clean_sm.start(pose["x_cm"], pose["y_cm"])
+    ui.send_message("state_update", state)
+
+ui.on_message("reset_encoders",    ui_reset_encoders)
+ui.on_message("set_brush",         ui_set_brush)
+ui.on_message("toggle_auto_clean", ui_toggle_auto_clean)
 
 _diag_last_summary = None
 
