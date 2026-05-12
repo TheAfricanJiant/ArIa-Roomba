@@ -188,7 +188,7 @@ def _spin_degrees(direction: int, deg: float, spd: int):
     start_theta = telemetry.get_pose()["theta_rad"]
     target_rad  = math.radians(deg)
     deadline    = time.time() + 3.0
-    motor.send_motor_cmd(direction * spd, -direction * spd)
+    motor.send_motor_cmd(-direction * spd, direction * spd)
     while time.time() < deadline:
         curr = telemetry.get_pose()["theta_rad"]
         turned = abs((curr - start_theta + math.pi) % (2*math.pi) - math.pi)
@@ -628,14 +628,11 @@ def toggle_power(client, data):
     state["motors_on"] = not state["motors_on"]
     if not state["motors_on"]:
         state["navigating"] = False; nav.clear_goal(); motor.send_motor_cmd(0, 0)
-    else:
-        if not state["navigating"]: motor.send_motor_cmd(state["speed"], state["speed"])
     ui.send_message("state_update", state)
 
 def set_speed(client, data):
     state["speed"] = data.get("speed", 160)
     ui.send_message("state_update", state)
-    if state["motors_on"]: motor.send_motor_cmd(state["speed"], state["speed"])
 
 def on_get_initial_state(client, data):
     ui.send_message("state_update", state, client)
@@ -1078,4 +1075,3 @@ threading.Thread(target=navigation_loop, daemon=True).start()
 camera.start_frame_grabber()  # auto-discovers MJPEG/WebSocket at port 4912
 threading.Thread(target=_probe_camera_stream, daemon=True).start()
 App.run()
-

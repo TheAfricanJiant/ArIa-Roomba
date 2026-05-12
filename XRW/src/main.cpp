@@ -49,7 +49,7 @@ volatile long encR = 0;
 
 void onEncL() {
     bool chB = (digitalRead(ENC_L_B) == HIGH);
-    encL += chB ? 1 : -1;   // was -1 : 1
+    encL += chB ? -1 : 1;
 }
 
 void onEncR() {
