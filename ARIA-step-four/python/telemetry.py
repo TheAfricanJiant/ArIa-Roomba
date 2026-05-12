@@ -15,6 +15,8 @@ import time
 import math
 import logging
 import threading
+import psutil
+import datetime
 import serial_bridge
 
 log = logging.getLogger(__name__)
@@ -330,6 +332,22 @@ def _run_pose_step():
         log.error(f"Pose step error: {e}")
 
 
+# ── System Health polling thread ──────────────────────────────────────────────
+def _system_health_loop(ui):
+    """Background thread: poll CPU and RAM using psutil."""
+    log.info("System Health poll thread started.")
+    while True:
+        try:
+            ts = int(time.time() * 1000)
+            cpu_percent = psutil.cpu_percent(interval=1)
+            mem_percent = psutil.virtual_memory().percent
+            ui.send_message('cpu_usage', {"value": cpu_percent, "ts": ts})
+            ui.send_message('memory_usage', {"value": mem_percent, "ts": ts})
+        except Exception as e:
+            log.debug(f"System Health poll error: {e}")
+            time.sleep(5)
+        time.sleep(4)  # interval=1 + 4 = 5 seconds total
+
 # ── Ultrasonic polling thread ─────────────────────────────────────────────────
 def _us_poll_loop():
     """Background thread: poll UNO Q ultrasonics via Bridge RPC every 200ms."""
@@ -357,8 +375,9 @@ def _us_poll_loop():
 def telemetry_loop(ui) -> None:
     """Background thread: read XRW serial, run EKF, push to WebUI."""
     global _last_map_push
-    # Start ultrasonic polling in its own thread
+    # Start ultrasonic and system health polling in their own threads
     threading.Thread(target=_us_poll_loop, daemon=True).start()
+    threading.Thread(target=_system_health_loop, args=(ui,), daemon=True).start()
     log.info("Telemetry loop started.")
 
     while True:

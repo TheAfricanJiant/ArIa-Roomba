@@ -6,7 +6,7 @@ from arduino.app_bricks.telegram_bot import TelegramBot, Sender, Message
 from arduino.app_bricks.object_detection import ObjectDetection
 from arduino.app_bricks.mood_detector import MoodDetector
 from arduino.app_bricks.web_ui import WebUI
-from arduino.app_utils import App
+from arduino.app_utils import App, Leds, Bridge
 from PIL import Image
 from io import BytesIO
 import threading, logging, json, os, time, math
@@ -55,6 +55,59 @@ state = {
     "brush":       0,    # -100..100
     "auto_clean":  False,
 }
+
+MATRIX_ICONS = {
+    "IDLE":  [0]*96,
+    "NAV":   [0]*96,
+    "CLEAN": [0]*96,
+    "AVOID": [0]*96,
+    "DOCK":  [0]*96
+}
+# Simple X for AVOID
+for i in range(8):
+    MATRIX_ICONS["AVOID"][i*12 + i + 2] = 7
+    MATRIX_ICONS["AVOID"][i*12 + 9 - i] = 7
+# Simple box for IDLE
+for i in range(8):
+    MATRIX_ICONS["IDLE"][i*12] = 2; MATRIX_ICONS["IDLE"][i*12+11] = 2
+    
+def update_hardware_indicators():
+    mode_str = "IDLE"
+    if state["auto_clean"]:
+        mode_str = "CLEAN"
+        Leds.set_led1_color(True, True, False) # Yellow
+    elif state["navigating"]:
+        mode_str = "NAV"
+        Leds.set_led1_color(False, False, True) # Blue
+    else:
+        Leds.set_led1_color(False, True, False) # Green
+        
+    try:
+        us = telemetry.get_ultrasonics()
+        if us.get("front", 999) < 15:
+            mode_str = "AVOID"
+            Leds.set_led1_color(True, False, False) # Red
+            
+        # LED3 Obstacle
+        if any(v < 15 and v > 0 for v in us.values()):
+            Bridge.call("set_led3_color", 255, 0, 0)
+        else:
+            Bridge.call("set_led3_color", 0, 255, 0)
+    except: pass
+    
+    Leds.set_led2_color(False, False, state["navigating"])
+    
+    try:
+        if state["vacuum"] > 0:
+            Bridge.call("set_led4_color", True, True, True)
+        else:
+            Bridge.call("set_led4_color", False, False, False)
+    except: pass
+    
+    try:
+        Bridge.call("draw", MATRIX_ICONS.get(mode_str, MATRIX_ICONS["IDLE"]))
+    except: pass
+
 nav   = navigator.Navigator()
 serial_bridge.connect()
 
@@ -716,6 +769,8 @@ def navigation_loop():
                     motor.send_motor_cmd(0, 0)
                     ui.send_message("state_update", state)
                     ui.send_message("path_update", [])
+            
+            update_hardware_indicators()
 
         except Exception as _nav_e:
             log.error(f"navigation_loop error: {_nav_e}")

@@ -33,6 +33,9 @@ const ekfY     = document.getElementById('ekf-y');
 const ekfTheta = document.getElementById('ekf-theta');
 const ekfDist  = document.getElementById('ekf-dist');
 
+const sysCpu   = document.getElementById('sys-cpu');
+const sysMem   = document.getElementById('sys-mem');
+
 const mapCanvas      = document.getElementById('map-canvas');
 const mapCtx         = mapCanvas.getContext('2d');
 const coveragePct    = document.getElementById('coverage-pct');
@@ -140,6 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('map_update',       (m) => renderMap(m));
     socket.on('obstacle_map_update', (m) => renderObstacleMap(m));
     socket.on('us_update',        (u) => updateUltrasonics(u));
+    socket.on('cpu_usage',        (d) => { if (sysCpu) sysCpu.textContent = d.value.toFixed(1) + '%'; });
+    socket.on('memory_usage',     (d) => { if (sysMem) sysMem.textContent = d.value.toFixed(1) + '%'; });
     socket.on('clean_state',      (s) => {
         const badge = document.getElementById('clean-state-badge');
         if (badge) badge.textContent = `State: ${s.state}`;

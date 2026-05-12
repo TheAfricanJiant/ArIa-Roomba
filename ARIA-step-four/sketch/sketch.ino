@@ -4,6 +4,9 @@
 
 #include <Arduino_RouterBridge.h>
 #include <Servo.h>
+#include <Arduino_LED_Matrix.h>
+#include <vector>
+#include <zephyr/kernel.h>
 
 /**
  * ARIA DASHBOARD — UNO Q COPROCESSOR SKETCH
@@ -47,6 +50,8 @@ static const int SERVO_PIN = 6;
 
 // ── Globals ──────────────────────────────────────────────────────────────────
 Servo cleanServo;
+Arduino_LED_Matrix matrix;
+K_MUTEX_DEFINE(matrix_mtx);
 
 // Cached ultrasonic readings (cm), updated every loop iteration
 volatile float _us_front = 999.0f;
@@ -95,6 +100,25 @@ void set_vacuum_pwm(int pwm)     { apply_vacuum(pwm); }
 void set_brush_servo(int speed)  { apply_servo(speed); }
 void set_led_state(bool state)   { digitalWrite(LED_BUILTIN, state ? LOW : HIGH); }
 
+void set_led3_color(int r, int g, int b) {
+    analogWrite(LED3_R, r);
+    analogWrite(LED3_G, g);
+    analogWrite(LED3_B, b);
+}
+
+void set_led4_color(bool r, bool g, bool b) {
+    digitalWrite(LED4_R, r ? LOW : HIGH);
+    digitalWrite(LED4_G, g ? LOW : HIGH);
+    digitalWrite(LED4_B, b ? LOW : HIGH);
+}
+
+void draw_matrix(std::vector<uint8_t> frame) {
+    if (frame.empty()) return;
+    k_mutex_lock(&matrix_mtx, K_FOREVER);
+    matrix.draw(frame.data());
+    k_mutex_unlock(&matrix_mtx);
+}
+
 float get_us_front() { return _us_front; }
 float get_us_right() { return _us_right; }
 float get_us_left()  { return _us_left;  }
@@ -105,6 +129,16 @@ void setup() {
     // LED
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);  // HIGH = OFF on UNO Q
+    pinMode(LED4_R, OUTPUT);
+    pinMode(LED4_G, OUTPUT);
+    pinMode(LED4_B, OUTPUT);
+    set_led3_color(0, 0, 0);
+    set_led4_color(false, false, false);
+
+    // Matrix
+    matrix.begin();
+    matrix.setGrayscaleBits(3);
+    matrix.clear();
 
     // Vacuum motor
     pinMode(VAC_ENB, OUTPUT);
@@ -129,6 +163,9 @@ void setup() {
     Bridge.provide("get_us_front",     get_us_front);
     Bridge.provide("get_us_right",     get_us_right);
     Bridge.provide("get_us_left",      get_us_left);
+    Bridge.provide("set_led3_color",   set_led3_color);
+    Bridge.provide("set_led4_color",   set_led4_color);
+    Bridge.provide("draw",             draw_matrix);
 }
 
 

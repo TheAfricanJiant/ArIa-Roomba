@@ -304,3 +304,61 @@ The AI vision layer. Provides:
 | `/brush` | Brush motor PWM via Arduino sketch |
 | `/log` | Rolling Python log buffer |
 | `/alerts` | Push notification system |
+
+---
+
+## Integrated Features
+
+### LED Matrix Painter
+
+The **LED Matrix Painter** module provides a web-based interface to draw, animate, and control the built-in LED Matrix of the Arduino UNO Q in real-time. It features a pixel editor with 3-bit (0-7) brightness control.
+
+![LED Matrix Painter Example](assets/docs_assets/led-matrix-thumbnail.png)
+
+#### Description
+This integration allows you to design visuals for the 8x13 LED matrix directly from your browser. Every change you make in the browser is immediately reflected on the physical board. The matrix is used to display state icons (IDLE, NAV, CLEAN, AVOID, DOCK) during normal operation.
+
+#### How it Works
+The LED Matrix Painter relies on a synchronized data flow between the browser, the Python backend, and the hardware.
+- **Python Backend**: Sends the raw byte array to the board via `Bridge.call("draw", frame_bytes)`.
+- **Arduino Sketch**: The sketch receives the raw byte data and uses the `Arduino_LED_Matrix` library to render the grayscale image.
+
+---
+
+### System Resources Logger
+
+The **System Resources Logger** monitors and displays real-time system performance data from your Arduino UNO Q board. It tracks CPU and memory usage and provides a web-based dashboard with live charts.
+
+![System Resources Logger](assets/docs_assets/system-resource-log.png)
+
+#### Description
+The application continuously monitors system performance using the `psutil` library to collect CPU and memory usage statistics. Data is streamed in real-time to a web interface. 
+
+#### How it Works
+The application uses the `psutil` library to gather system metrics:
+```python
+ import psutil
+ cpu_percent = psutil.cpu_percent(interval=1)
+ mem_percent = psutil.virtual_memory().percent
+```
+Data collection runs in a separate thread, sampling system resources to provide constant monitoring without blocking the web interface. The `web_ui` Brick provides WebSocket communication for live updates.
+
+---
+
+### Color your LEDs
+
+The **Color your LEDs** module lets you manage the color and state of the four built-in LEDs on the Arduino UNO Q.
+
+![Color your LEDs](assets/docs_assets/color-your-leds.png)
+
+#### Description
+Control the four built-in RGB LEDs of the Arduino UNO Q directly. This feature maps the robot's current state to the LEDs for visual feedback:
+- LED 1: General State
+- LED 2: Navigation Blinker
+- LED 3: Obstacle Indicator
+- LED 4: Vacuum Status
+
+#### How it Works
+- Receives color commands from the Python backend.
+- Uses `Leds.set_ledX_color` (MPU direct control) for LEDs 1 & 2.
+- Uses `Bridge.call` (MCU control) for LEDs 3 & 4.
