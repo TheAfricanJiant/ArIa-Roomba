@@ -17,18 +17,21 @@ class Navigator:
         self.waypoints = []
         self.base_speed = 140
         self.arrival_dist_cm = 18.0
-        self.lookahead_cm = 32.0
-        self.slow_radius_cm = 90.0
+        self.accept_dist_cm = 28.0
+        self.lookahead_cm = 25.0
+        self.slow_radius_cm = 100.0
         self.min_drive_pwm = 48
         self.max_drive_pwm = 190
-        self.min_turn_pwm = 45
-        self.max_turn_pwm = 135
-        self.align_error_rad = math.radians(55)
-        self.close_radius_cm = 38.0
-        self.stall_timeout_s = 5.0
+        self.min_turn_pwm = 32
+        self.max_turn_pwm = 115
+        self.close_radius_cm = 45.0
+        self.progress_timeout_s = 2.8
+        self.close_timeout_s = 4.0
         self._stall_since = 0.0
         self._last_distance = float("inf")
         self._last_progress_ts = time.monotonic()
+        self._best_distance = float("inf")
+        self._turn_polarity = 1.0
         self._debug = self._empty_debug("idle")
         global _cached_nav
         _cached_nav = self
@@ -78,6 +81,7 @@ class Navigator:
         self._stall_since = 0.0
         self._last_distance = float("inf")
         self._last_progress_ts = time.monotonic()
+        self._best_distance = float("inf")
 
     def _pop_next_goal(self):
         if self.waypoints:
@@ -111,17 +115,25 @@ class Navigator:
             self._pop_next_goal()
             final_distance = self._distance_to_goal(current_x, current_y, self.goal)
 
+        if final_distance < self._best_distance:
+            self._best_distance = final_distance
+
         if final_distance < self._last_distance - 0.6:
             self._last_progress_ts = now
             self._stall_since = 0.0
         elif final_distance < self.close_radius_cm:
             if self._stall_since == 0.0:
                 self._stall_since = now
-            elif now - self._stall_since > self.stall_timeout_s:
+            elif now - self._stall_since > self.close_timeout_s and final_distance < self.accept_dist_cm:
                 log.warning("Navigator: close-range stall at %.1f cm; accepting waypoint.", final_distance)
                 self.clear_goal()
                 self._debug = self._empty_debug("stalled-accepted")
                 return 0, 0, True
+        elif now - self._last_progress_ts > self.progress_timeout_s and final_distance > self.accept_dist_cm:
+            self._turn_polarity *= -1.0
+            self._last_progress_ts = now
+            self._best_distance = final_distance
+            log.warning("Navigator: no progress; flipped steering polarity to %.0f.", self._turn_polarity)
         self._last_distance = final_distance
 
         target = self._lookahead_target(current_x, current_y)
@@ -129,30 +141,32 @@ class Navigator:
         dy = target[1] - current_y
         heading_error = _wrap_angle(math.atan2(dy, dx) - current_theta)
 
-        abs_error = abs(heading_error)
-        max_turn = min(self.max_turn_pwm, max(self.min_turn_pwm, int(self.base_speed * 0.8)))
-        turn = _clamp(heading_error * 95.0, -max_turn, max_turn)
-        if 0 < abs(turn) < self.min_turn_pwm:
+        drive_dir = 1.0
+        control_error = heading_error
+        if abs(heading_error) > math.radians(115):
+            drive_dir = -1.0
+            control_error = _wrap_angle(heading_error + math.pi)
+
+        abs_error = abs(control_error)
+        speed_scale = max(0.26, min(1.0, final_distance / self.slow_radius_cm))
+        heading_scale = max(0.28, math.cos(min(abs_error, math.radians(74))))
+        forward = drive_dir * int(self.base_speed * speed_scale * heading_scale)
+
+        if abs(forward) < self.min_drive_pwm:
+            forward = math.copysign(self.min_drive_pwm, forward)
+        if final_distance < self.close_radius_cm:
+            forward = _clamp(forward, -62, 62)
+
+        max_turn = min(self.max_turn_pwm, max(self.min_turn_pwm, int(self.base_speed * 0.7)))
+        turn = self._turn_polarity * math.sin(control_error) * max_turn
+        if 0 < abs(turn) < self.min_turn_pwm and abs_error > math.radians(8):
             turn = math.copysign(self.min_turn_pwm, turn)
+        if final_distance < self.close_radius_cm:
+            turn = _clamp(turn, -58, 58)
 
-        if abs_error > self.align_error_rad and final_distance > self.close_radius_cm:
-            forward = 0
-            left = -turn
-            right = turn
-            mode = "aligning"
-        else:
-            speed_scale = max(0.30, min(1.0, final_distance / self.slow_radius_cm))
-            heading_scale = max(0.35, math.cos(min(abs_error, math.radians(70))))
-            forward = int(self.base_speed * speed_scale * heading_scale)
-            forward = max(self.min_drive_pwm, min(self.base_speed, forward))
-
-            if final_distance < self.close_radius_cm:
-                forward = min(forward, 70)
-                turn = _clamp(turn, -70, 70)
-
-            left = forward - turn
-            right = forward + turn
-            mode = "tracking"
+        left = forward - turn
+        right = forward + turn
+        mode = "tracking" if drive_dir > 0 else "reverse-tracking"
 
         left = _clamp(left, -self.max_drive_pwm, self.max_drive_pwm)
         right = _clamp(right, -self.max_drive_pwm, self.max_drive_pwm)
@@ -167,6 +181,7 @@ class Navigator:
             "right_pwm": int(right),
             "queued": len(self.waypoints),
             "lookahead_cm": self.lookahead_cm,
+            "turn_polarity": int(self._turn_polarity),
             "mode": "ekf go-to-goal",
         }
         return int(left), int(right), False
@@ -197,6 +212,7 @@ class Navigator:
             "right_pwm": 0,
             "queued": 0,
             "lookahead_cm": self.lookahead_cm,
+            "turn_polarity": int(self._turn_polarity),
             "mode": "ekf go-to-goal",
         }
 
