@@ -360,10 +360,6 @@ def goto_cmd(sender: Sender, message: Message):
     if name not in areas:
         sender.reply(f"❌ Area '{name}' not found. Use /areas."); return
     c = areas[name]
-    pose = telemetry.get_pose()
-    raw  = telemetry.telemetry
-    nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
-                  raw["enc_l"], raw["enc_r"])
     nav.set_goal(c["x"], c["y"], state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
@@ -433,10 +429,6 @@ def _run_clean_zone(x_min, y_min, x_max, y_max):
             candidates.append((dist, pts))
 
     path = min(candidates, key=lambda item: item[0])[1]
-    pose = telemetry.get_pose()
-    raw  = telemetry.telemetry
-    nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
-                  raw["enc_l"], raw["enc_r"])
     nav.set_path(path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
@@ -873,7 +865,6 @@ def manual_drive_ui(client, data):
 # Both paths use EKF pose (encoder + IMU) for closed-loop control.
 # ══════════════════════════════════════════════════════════════════════════════
 def navigation_loop():
-    last_count = -1
     while True:
         try:
             pose = telemetry.get_pose()
@@ -894,36 +885,53 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Manual nav mode: pose synced from EKF every tick ──
-            elif state["navigating"] and state["motors_on"]:
-                # Sync navigator pose from EKF each tick so heading stays correct
-                pose = telemetry.get_pose()
-                raw  = telemetry.telemetry
-                nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
-                              raw["enc_l"], raw["enc_r"])
+            # ── Manual nav: EKF open-loop (manual-drive-style commands) ──
+            elif state["navigating"] and state["motors_on"] and nav.goal:
+                gx, gy = nav.goal
+                dx = gx - pose["x_cm"]
+                dy = gy - pose["y_cm"]
+                dist = math.hypot(dx, dy)
+                bearing = math.atan2(dy, dx)
+                err = (bearing - pose["theta_rad"] + math.pi) % (2 * math.pi) - math.pi
 
-                nav.set_speed(state["speed"])
-                l, r, arrived = nav.step()
+                spd = state["speed"]
+                arrived = False
 
-                # Raw M, command — no firmware PI loop, no timeout issues
-                motor.send_motor_cmd(l, r)
+                if dist < 15.0:
+                    # Reached waypoint — advance or stop
+                    if nav.waypoints:
+                        nav.goal = nav.waypoints.pop(0)
+                    else:
+                        nav.clear_goal()
+                        state["navigating"] = False
+                        state["motors_on"]  = False
+                        arrived = True
+                    motor.send_motor_cmd(0, 0)
+                elif abs(err) > 0.2:  # ~11 deg
+                    # Spin in place like manual left/right
+                    turn_spd = max(45, int(spd * 0.6))
+                    if err > 0:
+                        motor.send_motor_cmd(-turn_spd, turn_spd)  # manual LEFT
+                    else:
+                        motor.send_motor_cmd(turn_spd, -turn_spd)  # manual RIGHT
+                else:
+                    # Drive straight like manual forward
+                    motor.send_motor_cmd(spd, spd)
 
                 # Realtime UI
-                ui.send_message("nav_status", nav.debug_status())
-
-                count = len(nav.waypoints)
-                if count != last_count:
-                    path  = ([{"x": nav.goal[0], "y": nav.goal[1]}] if nav.goal else [])
-                    path += [{"x": p[0], "y": p[1]} for p in nav.waypoints]
-                    ui.send_message("path_update", path)
-                    last_count = count
+                ui.send_message("nav_status", {
+                    "state": "turn" if abs(err) > 0.2 else "drive",
+                    "distance_cm": round(dist, 1),
+                    "heading_error_deg": round(math.degrees(err), 1),
+                    "queued": len(nav.waypoints),
+                    "pose_x": round(pose["x_cm"], 1),
+                    "pose_y": round(pose["y_cm"], 1),
+                    "pose_theta_deg": round(math.degrees(pose["theta_rad"]), 1),
+                })
 
                 if arrived:
-                    state["navigating"] = False
-                    state["motors_on"]  = False
-                    motor.send_motor_cmd(0, 0)
                     ui.send_message("state_update", state)
-                    ui.send_message("nav_status", nav.debug_status())
+                    ui.send_message("nav_status", {"state": "arrived"})
                     ui.send_message("path_update", [])
             
             update_hardware_indicators()
