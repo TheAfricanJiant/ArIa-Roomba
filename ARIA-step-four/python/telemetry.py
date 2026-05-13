@@ -49,11 +49,12 @@ HANDLED_GYRO_XY     = 0.55
 ODOM_INVALID_HOLD_S = 1.6
 
 # XRW reports raw encoder counts as T,encL,encR,...
-# On this robot the left wheel is wired to the XRP Motor 4 port, and a
-# hand-forward turn makes its raw count decrease.  ARIA's odometry expects
-# forward wheel travel to be positive for both sides, so correct the sign here
-# before EKF/dead-reckoning sees the counts.
-ENCODER_L_SIGN          = -1
+# The XRP quadrature ISR already produces positive ticks for forward motion on
+# both wheels (confirmed via serial monitor).  Do NOT flip the left encoder;
+# ENCODER_L_SIGN = -1 was inverting a correct signal and making the EKF see
+# a perpetual spin (delta_r - delta_l was huge), locking navigation in
+# turn-to-heading forever.
+ENCODER_L_SIGN          = 1
 ENCODER_R_SIGN          = 1
 
 

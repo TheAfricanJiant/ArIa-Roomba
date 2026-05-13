@@ -854,7 +854,6 @@ def manual_drive_ui(client, data):
 # ══════════════════════════════════════════════════════════════════════════════
 def navigation_loop():
     last_count = -1
-    last_nav_status = 0.0
     while True:
         try:
             pose = telemetry.get_pose()
@@ -895,10 +894,8 @@ def navigation_loop():
                 # Waypoint mode uses firmware wheel-speed feedback; manual UI stays raw PWM.
                 motor.send_auto_cmd(l, r)
 
-                now = time.time()
-                if now - last_nav_status > 0.25:
-                    ui.send_message("nav_status", nav.debug_status())
-                    last_nav_status = now
+                # Push nav status every loop tick for realtime UI
+                ui.send_message("nav_status", nav.debug_status())
 
                 count = len(nav.waypoints)
                 if count != last_count:
@@ -919,7 +916,7 @@ def navigation_loop():
 
         except Exception as _nav_e:
             log.error(f"navigation_loop error: {_nav_e}")
-        time.sleep(0.05)
+        time.sleep(0.02)  # 50 Hz control rate
 
 # ══════════════════════════════════════════════════════════════════════════════
 # REGISTER TELEGRAM COMMANDS

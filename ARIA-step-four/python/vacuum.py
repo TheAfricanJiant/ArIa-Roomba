@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-from arduino.app_utils import Bridge
 
 log = logging.getLogger(__name__)
 
@@ -14,6 +13,13 @@ _worker_started = False
 def _vacuum_worker():
     """Send only the newest requested PWM so slider drags do not queue stale values."""
     global _sent_pwm
+    # Import Bridge lazily — it may not be ready at module-load time
+    try:
+        from arduino.app_utils import Bridge
+    except ImportError as e:
+        log.error("Vacuum worker: arduino.app_utils.Bridge not available: %s", e)
+        return
+
     while True:
         with _lock:
             pwm = _latest_pwm

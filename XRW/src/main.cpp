@@ -57,9 +57,13 @@ DriveMode driveMode = DRIVE_RAW_PWM;
 const float AUTO_MAX_TICKS_PER_SEC = 1200.0f;
 const float AUTO_KP = 0.08f;
 const float AUTO_KI = 0.18f;
-const int AUTO_MIN_PWM = 42;
+const int   AUTO_MIN_PWM = 42;
 const unsigned long AUTO_CONTROL_INTERVAL_MS = 50;
-const unsigned long AUTO_COMMAND_TIMEOUT_MS = 450;
+const unsigned long AUTO_COMMAND_TIMEOUT_MS  = 450;
+// AUTO_ENC_L_SIGN = -1: the Motor 4 port + MOTOR_L_INVERT=true combination means
+// that when a positive A, target is commanded the left encoder counts DOWN.
+// The -1 corrects measuredLps back to positive so the PI loop is stable.
+// Do NOT change this — the firmware was correct and working.
 const int AUTO_ENC_L_SIGN = -1;
 const int AUTO_ENC_R_SIGN = 1;
 
