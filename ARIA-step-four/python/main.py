@@ -902,7 +902,7 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Pure visual nav: draw line + distance, NO motor commands ──
+            # ── Pure visual nav: show distance from robot to waypoint ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
                 gx, gy = nav.goal
                 dx = gx - pose["x_cm"]
@@ -913,18 +913,11 @@ def navigation_loop():
                     math.sin(bearing - pose["theta_rad"]),
                     math.cos(bearing - pose["theta_rad"])
                 )
-
-                # Draw line from robot → goal on the map
-                ui.send_message("path_update", [
-                    {"x": pose["x_cm"], "y": pose["y_cm"]},
-                    {"x": gx, "y": gy},
-                ])
-
-                # Show distance + heading error on nav status panel
                 ui.send_message("nav_status", {
+                    "state": "driving",
                     "distance_cm": round(dist, 1),
                     "heading_error_deg": round(math.degrees(err), 1),
-                    "state": "waypoint_set",
+                    "queued": len(nav.waypoints),
                     "pose_x": round(pose["x_cm"], 1),
                     "pose_y": round(pose["y_cm"], 1),
                     "pose_theta_deg": round(math.degrees(pose["theta_rad"]), 1),
