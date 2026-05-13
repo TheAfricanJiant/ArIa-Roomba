@@ -14,6 +14,9 @@
 ### Waypoint Following 
 ![waypoint](heading.png)
 
+### Navigation and manual control dashboard
+![dashboard](Nav-dashboard.png)
+
 ---
 ### NOTE
 - Crontab can be used to startup teh socat connection automatically on reboot.  Socat creates a virtual serial port for the Arduino Uno Q container to communicaete with teh XRP controller over serial 
