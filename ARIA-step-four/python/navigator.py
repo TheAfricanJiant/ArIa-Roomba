@@ -45,6 +45,7 @@ class Navigator:
         self.slow_cm = 40.0
 
         self.state = "idle"
+        self._spin_start_time = 0
         self._debug = {}
 
         global _cached_nav
@@ -100,6 +101,7 @@ class Navigator:
         self.goal = None
         self.waypoints = []
         self.state = "idle"
+        self._spin_start_time = 0
 
     def sync_pose(self, x, y, theta, enc_l=None, enc_r=None):
         self.x = x
@@ -143,7 +145,16 @@ class Navigator:
         if self.state == "turning":
             if abs(err_deg) < 10.0:
                 self.state = "driving"
+                self._spin_start_time = 0
             else:
+                if self._spin_start_time == 0:
+                    self._spin_start_time = time.time()
+                elif time.time() - self._spin_start_time > 6.0:
+                    # FAILSAFE: If it spins for 6 seconds, abort the waypoint!
+                    log.warning("Failsafe triggered: spinning too long, aborting waypoint.")
+                    self.clear_goal()
+                    return 0, 0, True
+
                 # Spin in place
                 turn_eff = self.turn_speed if abs(err_deg) > 20 else self.min_fwd_pwm
                 if err > 0: # Target is to our left -> spin left (CCW)
