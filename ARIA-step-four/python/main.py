@@ -892,7 +892,11 @@ def navigation_loop():
                 dy = gy - pose["y_cm"]
                 dist = math.hypot(dx, dy)
                 bearing = math.atan2(dy, dx)
-                err = (bearing - pose["theta_rad"] + math.pi) % (2 * math.pi) - math.pi
+                # Compute signed heading error robustly
+                err = math.atan2(
+                    math.sin(bearing - pose["theta_rad"]),
+                    math.cos(bearing - pose["theta_rad"])
+                )
 
                 nav._log_ctr = getattr(nav, '_log_ctr', 0) + 1
                 if nav._log_ctr % 10 == 0:
@@ -909,7 +913,6 @@ def navigation_loop():
                 arrived = False
 
                 if dist < 15.0:
-                    # Reached waypoint — advance or stop
                     if nav.waypoints:
                         nav.goal = nav.waypoints.pop(0)
                     else:
@@ -918,13 +921,12 @@ def navigation_loop():
                         state["motors_on"]  = False
                         arrived = True
                     motor.send_motor_cmd(0, 0)
-                elif abs(err) > 0.2:  # ~11 deg
-                    # Spin in place like manual left/right
+                elif abs(err) > 0.2:
                     turn_spd = max(45, int(spd * 0.6))
                     if err > 0:
-                        motor.send_motor_cmd(-turn_spd, turn_spd)  # manual LEFT
+                        motor.send_motor_cmd(turn_spd, -turn_spd)  # RIGHT
                     else:
-                        motor.send_motor_cmd(turn_spd, -turn_spd)  # manual RIGHT
+                        motor.send_motor_cmd(-turn_spd, turn_spd)  # LEFT
                 else:
                     # Drive straight like manual forward
                     motor.send_motor_cmd(spd, spd)
