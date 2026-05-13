@@ -788,8 +788,17 @@ def set_goal(client, data):
                   raw["enc_l"], raw["enc_r"])
     nav.set_goal(x, y, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
+    dist = math.hypot(x - pose["x_cm"], y - pose["y_cm"])
     ui.send_message("state_update", state)
-    ui.send_message("nav_status", nav.debug_status())
+    ui.send_message("nav_status", {
+        "state": "driving",
+        "distance_cm": round(dist, 1),
+        "queued": 0,
+    })
+    ui.send_message("path_update", [
+        {"x": pose["x_cm"], "y": pose["y_cm"]},
+        {"x": x, "y": y},
+    ])
 
 def set_path(client, data):
     points = data.get("path", [])
@@ -801,7 +810,14 @@ def set_path(client, data):
                   raw["enc_l"], raw["enc_r"])
     nav.set_path(path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
+    gx, gy = nav.goal if nav.goal else path[0]
+    dist = math.hypot(gx - pose["x_cm"], gy - pose["y_cm"])
     ui.send_message("state_update", state)
+    ui.send_message("nav_status", {
+        "state": "driving",
+        "distance_cm": round(dist, 1),
+        "queued": len(nav.waypoints),
+    })
 
 def clean_zone_ui(client, data):
     zone = data.get("zone")
@@ -900,37 +916,21 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Pure visual: line + distance on GUI map, NO motors ──
+            # ── Visual only: robot → waypoint line + distance ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
                 gx, gy = nav.goal
                 dx = gx - pose["x_cm"]
                 dy = gy - pose["y_cm"]
                 dist = math.hypot(dx, dy)
-                bearing = math.atan2(dy, dx)
-                err = math.atan2(
-                    math.sin(bearing - pose["theta_rad"]),
-                    math.cos(bearing - pose["theta_rad"])
-                )
 
-                # Draw a line: 30 interpolated points robot → goal
-                steps = 30
-                path = []
-                for i in range(steps + 1):
-                    t = i / steps
-                    path.append({
-                        "x": pose["x_cm"] + t * dx,
-                        "y": pose["y_cm"] + t * dy,
-                    })
-                ui.send_message("path_update", path)
-
+                ui.send_message("path_update", [
+                    {"x": pose["x_cm"], "y": pose["y_cm"]},
+                    {"x": gx, "y": gy},
+                ])
                 ui.send_message("nav_status", {
                     "state": "driving",
                     "distance_cm": round(dist, 1),
-                    "heading_error_deg": round(math.degrees(err), 1),
                     "queued": len(nav.waypoints),
-                    "pose_x": round(pose["x_cm"], 1),
-                    "pose_y": round(pose["y_cm"], 1),
-                    "pose_theta_deg": round(math.degrees(pose["theta_rad"]), 1),
                 })
             
             update_hardware_indicators()
