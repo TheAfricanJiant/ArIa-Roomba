@@ -344,6 +344,7 @@ def stop_cmd(sender: Sender, message: Message):
     nav.clear_goal()
     motor.send_motor_cmd(0, 0)
     ui.send_message("state_update", state)
+    ui.send_message("path_update", [])
     sender.reply("🛑 Emergency stop! Motors off.")
 
 def speed_cmd(sender: Sender, message: Message):
@@ -406,7 +407,9 @@ def deletearea_cmd(sender: Sender, message: Message):
 
 def cancelpath_cmd(sender: Sender, message: Message):
     nav.clear_goal(); state["navigating"] = False
-    motor.send_motor_cmd(0, 0); ui.send_message("state_update", state)
+    motor.send_motor_cmd(0, 0)
+    ui.send_message("state_update", state)
+    ui.send_message("path_update", [])
     sender.reply("🚫 Navigation cancelled.")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -899,53 +902,33 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Manual nav: drive forward if waypoint ahead ──
+            # ── Pure visual nav: draw line + distance, NO motor commands ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
                 gx, gy = nav.goal
                 dx = gx - pose["x_cm"]
                 dy = gy - pose["y_cm"]
                 dist = math.hypot(dx, dy)
+                bearing = math.atan2(dy, dx)
+                err = math.atan2(
+                    math.sin(bearing - pose["theta_rad"]),
+                    math.cos(bearing - pose["theta_rad"])
+                )
 
-                if getattr(nav, '_drive_active', False):
-                    pass  # drive thread running, wait
-                elif dist < 15.0:
-                    if nav.waypoints:
-                        nav.goal = nav.waypoints.pop(0)
-                    else:
-                        nav.clear_goal()
-                        state["navigating"] = False
-                        state["motors_on"]  = False
-                    motor.send_motor_cmd(0, 0)
-                    ui.send_message("nav_status", {
-                        "distance_cm": 0, "state": "idle"
-                    })
-                    ui.send_message("state_update", state)
-                    ui.send_message("path_update", [])
-                else:
-                    bearing = math.atan2(dy, dx)
-                    err = math.atan2(
-                        math.sin(bearing - pose["theta_rad"]),
-                        math.cos(bearing - pose["theta_rad"])
-                    )
-                    if abs(math.degrees(err)) > 15.0:
-                        motor.send_motor_cmd(0, 0)
-                        ui.send_message("nav_status", {
-                            "error": "Cannot navigate: waypoint not in front",
-                        })
-                        state["navigating"] = False
-                        state["motors_on"]  = False
-                        ui.send_message("state_update", state)
-                    else:
-                        nav._drive_active = True
-                        threading.Thread(
-                            target=_nav_drive_thread,
-                            args=(dist, state["speed"]),
-                            daemon=True
-                        ).start()
-                        ui.send_message("nav_status", {
-                            "distance_cm": round(dist, 1),
-                            "state": "drive",
-                        })
+                # Draw line from robot → goal on the map
+                ui.send_message("path_update", [
+                    {"x": pose["x_cm"], "y": pose["y_cm"]},
+                    {"x": gx, "y": gy},
+                ])
+
+                # Show distance + heading error on nav status panel
+                ui.send_message("nav_status", {
+                    "distance_cm": round(dist, 1),
+                    "heading_error_deg": round(math.degrees(err), 1),
+                    "state": "waypoint_set",
+                    "pose_x": round(pose["x_cm"], 1),
+                    "pose_y": round(pose["y_cm"], 1),
+                    "pose_theta_deg": round(math.degrees(pose["theta_rad"]), 1),
+                })
             
             update_hardware_indicators()
 
