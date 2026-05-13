@@ -77,8 +77,8 @@ class Navigator:
         _cached_nav = self
 
     # ── Encoder integration ───────────────────────────────────────────────────
-    def update_encoders(self, enc_l: int, enc_r: int):
-        """Integrate encoder ticks into (x, y, theta). Call on every telemetry tick."""
+    def update_encoders(self, enc_l: int, enc_r: int, gyro_z: float = 0.0, dt: float = 0.1):
+        """Integrate encoder ticks + gyro Z into pose. Call on every telemetry tick."""
         if not self._enc_initialised:
             self._last_enc_l = enc_l
             self._last_enc_r = enc_r
@@ -90,18 +90,21 @@ class Navigator:
         self._last_enc_l = enc_l
         self._last_enc_r = enc_r
 
-        d_l     = dl * CM_PER_TICK
-        d_r     = dr * CM_PER_TICK
-        d_c     = (d_l + d_r) * 0.5
-        # Standard differential: left motor on left side.
-        # Left turn (CCW) → enc_r increases, enc_l decreases → d_r > d_l → d_theta > 0
-        d_theta = (d_r - d_l) / WHEEL_BASE_CM
+        d_l = dl * CM_PER_TICK
+        d_r = dr * CM_PER_TICK
+        d_c = (d_l + d_r) * 0.5
 
-        half        = d_theta * 0.5
-        self.theta  = _wrap(self.theta + half)
-        self.x     += d_c * math.cos(self.theta)
-        self.y     += d_c * math.sin(self.theta)
-        self.theta  = _wrap(self.theta + half)
+        # Fuse encoder differential with gyro Z 50/50.
+        # Gyro Z is confirmed working: non-zero while turning, zero at rest.
+        d_theta_enc = (d_r - d_l) / WHEEL_BASE_CM
+        d_theta_imu = gyro_z * dt
+        d_theta = 0.5 * d_theta_enc + 0.5 * d_theta_imu
+
+        half       = d_theta * 0.5
+        self.theta = _wrap(self.theta + half)
+        self.x    += d_c * math.cos(self.theta)
+        self.y    += d_c * math.sin(self.theta)
+        self.theta = _wrap(self.theta + half)
 
     # ── Path management ───────────────────────────────────────────────────────
     def set_speed(self, speed: int):
