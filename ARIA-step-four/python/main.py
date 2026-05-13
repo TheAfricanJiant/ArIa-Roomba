@@ -951,8 +951,9 @@ def navigation_loop():
 
             # ── Execute motion & Visual: robot → waypoint line ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
+                nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"])
                 left, right, done = nav.step()
-                motor.send_motor_cmd(left, right)
+                motor.send_auto_cmd(left, right)
                 
                 if done:
                     nav.clear_goal()
