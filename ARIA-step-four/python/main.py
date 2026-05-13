@@ -884,10 +884,9 @@ def navigation_loop():
 
             # ── Manual nav mode: encoder-only proportional follower ──
             elif state["navigating"] and state["motors_on"]:
-                # Feed latest encoder + gyro into navigator's dead-reckoning
+                # Feed latest encoder counts into navigator's pure dead-reckoning
                 raw = telemetry.telemetry
-                nav.update_encoders(raw["enc_l"], raw["enc_r"],
-                                    gyro_z=raw["gyro_z"], dt=0.02)
+                nav.update_encoders(raw["enc_l"], raw["enc_r"])
 
                 nav.set_speed(state["speed"])
                 l, r, arrived = nav.step()   # pose is managed internally
