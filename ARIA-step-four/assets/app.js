@@ -763,14 +763,14 @@ function _drawMap(m) {
             const distCm = Math.hypot(dx, dy) / PX_PER_CM;
             
             mapCtx.save();
-            mapCtx.font = \'bold 11px sans-serif\';
-            const text = distCm.toFixed(1) + \'cm\';
+            mapCtx.font = 'bold 11px sans-serif';
+            const text = distCm.toFixed(1) + 'cm';
             const textWidth = mapCtx.measureText(text).width;
-            mapCtx.fillStyle = \'rgba(255, 255, 255, 0.8)\';
+            mapCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             mapCtx.fillRect(midX - textWidth/2 - 2, midY - 8, textWidth + 4, 16);
-            mapCtx.fillStyle = \'#000000\';
-            mapCtx.textAlign = \'center\';
-            mapCtx.textBaseline = \'middle\';
+            mapCtx.fillStyle = '#000000';
+            mapCtx.textAlign = 'center';
+            mapCtx.textBaseline = 'middle';
             mapCtx.fillText(text, midX, midY);
             mapCtx.restore();
 
