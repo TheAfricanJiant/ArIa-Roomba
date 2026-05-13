@@ -442,8 +442,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (_settingGoal) {
             _waypoints.push({ x: worldX, y: worldY });
-            let lastWorld = _waypoints.length > 1 ? _waypoints[_waypoints.length - 2] : {x: cx, y: cy};
-            socket.emit('request_path_plan', { start: lastWorld, goal: {x: worldX, y: worldY} });
+            socket.emit('request_path_plan', { waypoints: [{x: cx, y: cy}, ..._waypoints] });
             startNavBtn.style.display = 'inline-block';
             saveRoutineBtn.style.display = 'inline-block';
             clearGoalBtn.style.display = 'inline-block';

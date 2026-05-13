@@ -803,14 +803,47 @@ def set_goal(client, data):
 def set_path(client, data):
     points = data.get("path", [])
     if not points: return
-    path = [(p["x"], p["y"]) for p in points]
     pose = telemetry.get_pose()
     raw  = telemetry.telemetry
     nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
                   raw["enc_l"], raw["enc_r"])
-    nav.set_path(path, state["speed"])
+    
+    full_path = []
+    try:
+        from aria.astar import plan_path
+        if telemetry.grid:
+            wps = [{"x": pose["x_cm"], "y": pose["y_cm"]}] + points
+            for i in range(len(wps) - 1):
+                start = wps[i]
+                goal = wps[i+1]
+                path = plan_path(telemetry.grid, start["x"], start["y"], goal["x"], goal["y"])
+                if path:
+                    if full_path and path:
+                        full_path.extend(path[1:])
+                    else:
+                        full_path.extend(path)
+    except Exception as e:
+        log.error(f"set_path A* error: {e}")
+        
+    if not full_path:
+        full_path = [(p["x"], p["y"]) for p in points]
+        
+    # Strip start point if too close (prevent looping)
+    if full_path:
+        dx = full_path[0][0] - pose["x_cm"]
+        dy = full_path[0][1] - pose["y_cm"]
+        if math.hypot(dx, dy) < 15.0:
+            full_path.pop(0)
+
+    if not full_path:
+        nav.clear_goal(); state["navigating"] = False; state["motors_on"] = False
+        motor.send_motor_cmd(0, 0); ui.send_message("state_update", state)
+        ui.send_message("path_update", [])
+        return
+
+    nav.set_path(full_path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
-    gx, gy = nav.goal if nav.goal else path[0]
+    gx, gy = nav.goal if nav.goal else full_path[0]
     dist = math.hypot(gx - pose["x_cm"], gy - pose["y_cm"])
     ui.send_message("state_update", state)
     ui.send_message("nav_status", {
@@ -916,22 +949,26 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Visual only: robot → waypoint line + distance ──
+            # ── Execute motion & Visual: robot → waypoint line ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
-                gx, gy = nav.goal
+                left, right, done = nav.step()
+                motor.send_motor_cmd(left, right)
+                
+                if done:
+                    nav.clear_goal()
+                    state["navigating"] = False
+                    state["motors_on"] = False
+                    motor.send_motor_cmd(0, 0)
+                    ui.send_message("state_update", state)
+                
+                gx, gy = nav.goal if nav.goal else (pose["x_cm"], pose["y_cm"])
                 dx = gx - pose["x_cm"]
                 dy = gy - pose["y_cm"]
                 dist = math.hypot(dx, dy)
 
-                ui.send_message("path_update", [
-                    {"x": pose["x_cm"], "y": pose["y_cm"]},
-                    {"x": gx, "y": gy},
-                ])
-                ui.send_message("nav_status", {
-                    "state": "driving",
-                    "distance_cm": round(dist, 1),
-                    "queued": len(nav.waypoints),
-                })
+                remaining = [{"x": gx, "y": gy}] + [{"x": p[0], "y": p[1]} for p in nav.waypoints]
+                ui.send_message("path_update", [{"x": pose["x_cm"], "y": pose["y_cm"]}] + remaining)
+                ui.send_message("nav_status", nav.debug_status())
             
             update_hardware_indicators()
 
@@ -1070,15 +1107,23 @@ def frame_from_browser(client, data):
 # REGISTER WEB UI HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
 def ui_request_path_plan(client, data):
-    start = data.get("start")
-    goal = data.get("goal")
-    if not start or not goal: return
+    waypoints = data.get("waypoints")
+    if not waypoints or len(waypoints) < 2: return
     try:
         from aria.astar import plan_path
         if telemetry.grid:
-            path = plan_path(telemetry.grid, start["x"], start["y"], goal["x"], goal["y"])
-            if path:
-                ui.send_message("path_plan_update", [{"x": p[0], "y": p[1]} for p in path], client)
+            full_path = []
+            for i in range(len(waypoints) - 1):
+                start = waypoints[i]
+                goal = waypoints[i+1]
+                path = plan_path(telemetry.grid, start["x"], start["y"], goal["x"], goal["y"])
+                if path:
+                    if full_path and path:
+                        full_path.extend(path[1:])
+                    else:
+                        full_path.extend(path)
+            if full_path:
+                ui.send_message("path_plan_update", [{"x": p[0], "y": p[1]} for p in full_path], client)
     except Exception as e:
         log.error(f"Path planning error: {e}")
 
