@@ -1069,6 +1069,20 @@ def frame_from_browser(client, data):
 # ══════════════════════════════════════════════════════════════════════════════
 # REGISTER WEB UI HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
+def ui_request_path_plan(client, data):
+    start = data.get("start")
+    goal = data.get("goal")
+    if not start or not goal: return
+    try:
+        from aria.astar import plan_path
+        if telemetry.grid:
+            path = plan_path(telemetry.grid, start["x"], start["y"], goal["x"], goal["y"])
+            if path:
+                ui.send_message("path_plan_update", [{"x": p[0], "y": p[1]} for p in path], client)
+    except Exception as e:
+        log.error(f"Path planning error: {e}")
+
+ui.on_message("request_path_plan", ui_request_path_plan)
 ui.on_message("toggle_power",      toggle_power)
 ui.on_message("set_speed",         set_speed)
 ui.on_message("get_initial_state", on_get_initial_state)

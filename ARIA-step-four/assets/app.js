@@ -189,6 +189,11 @@ document.addEventListener('DOMContentLoaded', () => {
         _waypoints = path;
         if (_lastMapData) _drawMap(_lastMapData);
     });
+
+    socket.on('path_plan_update', (path) => {
+        _plannedPath = path;
+        if (_lastMapData) _drawMap(_lastMapData);
+    });
     
     socket.on('routines_list', (list) => {
         _routinesData = list;
@@ -381,6 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearGoalBtn.addEventListener('click', () => {
         socket.emit('clear_goal', {});
         _waypoints = [];
+        _plannedPath = [];
         _zone = null;
         _zoneStart = null;
         _resetUI();
@@ -436,6 +442,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (_settingGoal) {
             _waypoints.push({ x: worldX, y: worldY });
+            let lastWorld = _waypoints.length > 1 ? _waypoints[_waypoints.length - 2] : {x: cx, y: cy};
+            socket.emit('request_path_plan', { start: lastWorld, goal: {x: worldX, y: worldY} });
             startNavBtn.style.display = 'inline-block';
             saveRoutineBtn.style.display = 'inline-block';
             clearGoalBtn.style.display = 'inline-block';
@@ -549,8 +557,7 @@ function updateNavStatus(s) {
     if (!s) return;
     if (navStatusState) navStatusState.textContent = s.state || 'idle';
     if (navStatusMode) navStatusMode.textContent = s.mode || 'forward-only pure pursuit';
-    if (navStatusDistance) navStatusDistance.textContent = `${Number(s.distance_cm || 0).toFixed(1)} cm`;
-    if (navStatusHeading) navStatusHeading.textContent = `${Number(s.heading_error_deg || 0).toFixed(1)} deg`;
+    if (navStatusDistance) navStatusDistance.textContent = `${Number(s.distance_cm || 0).toFixed(1)} cm / ${Number(s.heading_error_deg || 0).toFixed(1)}°`;
     if (navStatusPwm) navStatusPwm.textContent = `L ${s.left_pwm || 0} / R ${s.right_pwm || 0}`;
     if (navStatusQueued) navStatusQueued.textContent = String(s.queued || 0);
     if (navStatusTarget) {
@@ -761,10 +768,11 @@ function _drawMap(m) {
             const midX = lastPt.x + dx * 0.5;
             const midY = lastPt.y + dy * 0.5;
             const distCm = Math.hypot(dx, dy) / PX_PER_CM;
+            let absoluteHeading = (angle * 180 / Math.PI).toFixed(0);
             
             mapCtx.save();
             mapCtx.font = 'bold 11px sans-serif';
-            const text = distCm.toFixed(1) + 'cm';
+            const text = `${distCm.toFixed(1)}cm | ${absoluteHeading}°`;
             const textWidth = mapCtx.measureText(text).width;
             mapCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             mapCtx.fillRect(midX - textWidth/2 - 2, midY - 8, textWidth + 4, 16);
@@ -779,6 +787,21 @@ function _drawMap(m) {
         mapCtx.strokeStyle = 'rgba(76, 175, 80, 0.9)';
         mapCtx.lineWidth = 2;
         mapCtx.stroke();
+
+        // Draw planned A* path
+        if (_plannedPath && _plannedPath.length > 1) {
+            mapCtx.beginPath();
+            _plannedPath.forEach((pt, i) => {
+                const p = w2p(pt.x, pt.y);
+                if (i === 0) mapCtx.moveTo(p.x, p.y);
+                else mapCtx.lineTo(p.x, p.y);
+            });
+            mapCtx.strokeStyle = 'rgba(255, 193, 7, 0.8)'; // amber
+            mapCtx.lineWidth = 3;
+            mapCtx.setLineDash([4, 4]);
+            mapCtx.stroke();
+            mapCtx.setLineDash([]);
+        }
 
         // Draw points
         _waypoints.forEach((pt, i) => {
