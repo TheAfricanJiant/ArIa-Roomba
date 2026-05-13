@@ -54,7 +54,7 @@ ODOM_INVALID_HOLD_S = 0.3   # short hold — long holds cascade into 40+ s pause
 # ENCODER_L_SIGN = -1 was inverting a correct signal and making the EKF see
 # a perpetual spin (delta_r - delta_l was huge), locking navigation in
 # turn-to-heading forever.
-ENCODER_L_SIGN          = 1
+ENCODER_L_SIGN          = -1
 ENCODER_R_SIGN          = 1
 
 

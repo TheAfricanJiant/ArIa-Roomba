@@ -924,9 +924,9 @@ def navigation_loop():
                 elif abs(err) > 0.2:
                     turn_spd = max(45, int(spd * 0.6))
                     if err > 0:
-                        motor.send_motor_cmd(turn_spd, -turn_spd)  # RIGHT
-                    else:
                         motor.send_motor_cmd(-turn_spd, turn_spd)  # LEFT
+                    else:
+                        motor.send_motor_cmd(turn_spd, -turn_spd)  # RIGHT
                 else:
                     # Drive straight like manual forward
                     motor.send_motor_cmd(spd, spd)
