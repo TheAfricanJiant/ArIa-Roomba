@@ -67,8 +67,11 @@ class Navigator:
         d_r = dr * CM_PER_TICK
         d_c = (d_l + d_r) * 0.5
 
-        # Pure encoders. No gyro fusion to guarantee no sign/unit conflicts.
-        d_theta = (d_r - d_l) / WHEEL_BASE_CM
+        # The symptoms (math thinks it's aligning but robot physically spins away)
+        # prove the robot is horizontally inverted (left/right swapped for BOTH motors
+        # and encoders). We must flip the differential so a physical left turn
+        # registers as a positive d_theta.
+        d_theta = (d_l - d_r) / WHEEL_BASE_CM
 
         half = d_theta * 0.5
         self.theta = _wrap(self.theta + half)
@@ -155,14 +158,14 @@ class Navigator:
                     self.clear_goal()
                     return 0, 0, True
 
-                # Spin in place
+                # Spin in place (horizontally inverted robot logic)
                 turn_eff = self.turn_speed if abs(err_deg) > 20 else self.min_fwd_pwm
-                if err > 0: # Target is to our left -> spin left (CCW)
-                    left = -turn_eff
-                    right = turn_eff
-                else:       # Target is to our right -> spin right (CW)
+                if err > 0: # Target is to our left -> physically turn left
                     left = turn_eff
                     right = -turn_eff
+                else:       # Target is to our right -> physically turn right
+                    left = -turn_eff
+                    right = turn_eff
 
         if self.state == "driving":
             if abs(err_deg) > 25.0:
@@ -179,8 +182,9 @@ class Navigator:
                 turn = int(K * err_deg)
                 turn = _clamp(turn, -fwd, fwd)
 
-                left = int(_clamp(fwd - turn, -255, 255))
-                right = int(_clamp(fwd + turn, -255, 255))
+                # Horizontally inverted: steering signs flipped
+                left = int(_clamp(fwd + turn, -255, 255))
+                right = int(_clamp(fwd - turn, -255, 255))
 
         self._debug = {
             "state": self.state,
