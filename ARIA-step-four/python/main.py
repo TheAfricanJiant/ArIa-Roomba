@@ -892,8 +892,8 @@ def navigation_loop():
                 l, r, arrived = nav.step(
                     pose["x_cm"], pose["y_cm"], pose["theta_rad"]
                 )
-                # Navigator already outputs the calibrated manual-drive motor basis.
-                motor.send_motor_cmd(l, r)
+                # Waypoint mode uses firmware wheel-speed feedback; manual UI stays raw PWM.
+                motor.send_auto_cmd(l, r)
 
                 now = time.time()
                 if now - last_nav_status > 0.25:

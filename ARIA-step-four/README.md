@@ -273,6 +273,45 @@ When the robot is lifted, handled, sharply tilted, or the encoders claim a turn 
 
 This prevents the trajectory from walking across the map just because the wheels spin while the robot is in the air.
 
+### Waypoint Motor Control
+
+Manual driving and waypoint driving now intentionally use different firmware commands:
+
+```text
+M,left,right = raw manual PWM
+A,left,right = autonomous wheel-speed basis
+```
+
+The manual UI still sends `M` commands, so the forward/back/left/right controls keep the direct feel that already worked. Waypoint following sends `A` commands from `main.py` through `motor.send_auto_cmd()`. The `XRW` firmware converts that command into target encoder tick rates and runs a small PI loop on each wheel. If the left wheel drags because the wheel rubs the chassis, autonomous mode can raise left PWM relative to right PWM until the encoder rates match better.
+
+The waypoint controller in `navigator.py` uses EKF pose feedback:
+
+1. compute distance and heading error to the current grid target
+2. slow down near the target
+3. turn in place only when heading error is large
+4. otherwise drive forward while applying a bounded steering correction
+
+The motor basis must match the manual UI:
+
+```text
+forward > 0 -> left = +forward, right = +forward
+turn    > 0 -> left = -turn,   right = +turn
+```
+
+An earlier waypoint version used the wrong basis for forward motion (`left=-forward`, `right=+forward`). That asks the robot to spin even when the target is straight ahead. The current formula is:
+
+```text
+left  = forward - turn
+right = forward + turn
+```
+
+Firmware safety behavior:
+
+- `M,0,0` immediately exits autonomous velocity mode and stops the motors
+- `A,0,0` stops and resets the autonomous wheel-speed controller
+- if waypoint commands stop arriving for about 450 ms, `XRW` stops the motors
+- telemetry still begins with the original `T,encL,encR,ax,ay,az,gx,gy,gz` fields, with extra autonomous debug fields appended
+
 ### XRP Constants
 
 The XRP constants used by ARIA are:

@@ -10,7 +10,7 @@ _cached_nav = None
 
 
 class Navigator:
-    """EKF-feedback waypoint follower using the calibrated manual-drive basis."""
+    """EKF-feedback waypoint follower using the same motor basis as manual controls."""
 
     def __init__(self):
         self.goal = None
@@ -32,7 +32,7 @@ class Navigator:
         self._last_progress_ts = time.monotonic()
         self._best_distance = float("inf")
         self._last_abs_error = float("inf")
-        self._turn_polarity = -1.0
+        self._turn_polarity = 1.0
         self._debug = self._empty_debug("idle")
         global _cached_nav
         _cached_nav = self
@@ -184,10 +184,10 @@ class Navigator:
             turn = math.copysign(self.min_turn_pwm, turn)
 
         # Manual-control basis:
-        #   forward > 0 -> motor(-forward, +forward)
-        #   turn    > 0 -> motor(+turn, +turn)
-        left = _clamp(turn - forward, -self.max_drive_pwm, self.max_drive_pwm)
-        right = _clamp(turn + forward, -self.max_drive_pwm, self.max_drive_pwm)
+        #   forward > 0 -> motor(+forward, +forward)
+        #   turn    > 0 -> motor(-turn, +turn)
+        left = _clamp(forward - turn, -self.max_drive_pwm, self.max_drive_pwm)
+        right = _clamp(forward + turn, -self.max_drive_pwm, self.max_drive_pwm)
 
         self._debug = {
             "state": mode,
