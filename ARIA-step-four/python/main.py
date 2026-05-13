@@ -278,6 +278,20 @@ def _drive_distance_cm(direction: int, target_cm: float, spd: int):
     motor.send_motor_cmd(0, 0)
     state["motors_on"] = False
 
+
+# ── Wrapper for nav loop: drives forward, then cleans up state ──────────────
+def _nav_drive_thread(distance_cm: float, speed: int):
+    try:
+        _drive_distance_cm(1, distance_cm, speed)
+    finally:
+        nav.clear_goal()
+        state["navigating"] = False
+        state["motors_on"]  = False
+        nav._drive_active   = False
+        ui.send_message("state_update", state)
+        ui.send_message("path_update", [])
+
+
 def _spin_degrees(direction: int, deg: float, spd: int):
     """Spin until EKF heading changes by deg. Max 3s safety."""
     start_theta = telemetry.get_pose()["theta_rad"]
@@ -885,55 +899,53 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Manual nav: straight drive only if waypoint is ahead ──
+            # ── Manual nav: drive forward if waypoint ahead ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
                 gx, gy = nav.goal
                 dx = gx - pose["x_cm"]
                 dy = gy - pose["y_cm"]
                 dist = math.hypot(dx, dy)
-                bearing = math.atan2(dy, dx)
-                err = math.atan2(
-                    math.sin(bearing - pose["theta_rad"]),
-                    math.cos(bearing - pose["theta_rad"])
-                )
 
-                spd = state["speed"]
-                arrived = False
-
-                if dist < 15.0:
+                if getattr(nav, '_drive_active', False):
+                    pass  # drive thread running, wait
+                elif dist < 15.0:
                     if nav.waypoints:
                         nav.goal = nav.waypoints.pop(0)
                     else:
                         nav.clear_goal()
                         state["navigating"] = False
                         state["motors_on"]  = False
-                        arrived = True
-                    motor.send_motor_cmd(0, 0)
-                elif abs(math.degrees(err)) > 15.0:
                     motor.send_motor_cmd(0, 0)
                     ui.send_message("nav_status", {
-                        "error": "Cannot navigate: waypoint not in front of robot",
-                        "heading_error_deg": round(math.degrees(err), 1),
+                        "distance_cm": 0, "state": "idle"
                     })
-                    state["navigating"] = False
-                    state["motors_on"]  = False
-                else:
-                    motor.send_motor_cmd(spd, spd)
-
-                ui.send_message("nav_status", {
-                    "distance_cm": round(dist, 1),
-                    "state": "idle" if arrived or not state["navigating"] else "drive",
-                    "queued": len(nav.waypoints),
-                    "pose_x": round(pose["x_cm"], 1),
-                    "pose_y": round(pose["y_cm"], 1),
-                    "pose_theta_deg": round(math.degrees(pose["theta_rad"]), 1),
-                })
-
-                if arrived:
-                    state["navigating"] = False
-                    state["motors_on"]  = False
                     ui.send_message("state_update", state)
                     ui.send_message("path_update", [])
+                else:
+                    bearing = math.atan2(dy, dx)
+                    err = math.atan2(
+                        math.sin(bearing - pose["theta_rad"]),
+                        math.cos(bearing - pose["theta_rad"])
+                    )
+                    if abs(math.degrees(err)) > 15.0:
+                        motor.send_motor_cmd(0, 0)
+                        ui.send_message("nav_status", {
+                            "error": "Cannot navigate: waypoint not in front",
+                        })
+                        state["navigating"] = False
+                        state["motors_on"]  = False
+                        ui.send_message("state_update", state)
+                    else:
+                        nav._drive_active = True
+                        threading.Thread(
+                            target=_nav_drive_thread,
+                            args=(dist, state["speed"]),
+                            daemon=True
+                        ).start()
+                        ui.send_message("nav_status", {
+                            "distance_cm": round(dist, 1),
+                            "state": "drive",
+                        })
             
             update_hardware_indicators()
 
