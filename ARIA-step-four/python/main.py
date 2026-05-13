@@ -894,6 +894,17 @@ def navigation_loop():
                 bearing = math.atan2(dy, dx)
                 err = (bearing - pose["theta_rad"] + math.pi) % (2 * math.pi) - math.pi
 
+                nav._log_ctr = getattr(nav, '_log_ctr', 0) + 1
+                if nav._log_ctr % 10 == 0:
+                    log.info(
+                        f"NAV g=({gx:.0f},{gy:.0f}) "
+                        f"p=({pose['x_cm']:.0f},{pose['y_cm']:.0f}) "
+                        f"b={math.degrees(bearing):.1f} "
+                        f"t={math.degrees(pose['theta_rad']):.1f} "
+                        f"e={math.degrees(err):.1f} "
+                        f"d={dist:.0f}"
+                    )
+
                 spd = state["speed"]
                 arrived = False
 
