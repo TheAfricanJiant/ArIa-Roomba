@@ -894,14 +894,16 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Manual nav mode: encoder-only proportional follower ──
+            # ── Manual nav mode: pose synced from EKF every tick ──
             elif state["navigating"] and state["motors_on"]:
-                # Feed latest encoder counts into navigator's pure dead-reckoning
-                raw = telemetry.telemetry
-                nav.update_encoders(raw["enc_l"], raw["enc_r"])
+                # Sync navigator pose from EKF each tick so heading stays correct
+                pose = telemetry.get_pose()
+                raw  = telemetry.telemetry
+                nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
+                              raw["enc_l"], raw["enc_r"])
 
                 nav.set_speed(state["speed"])
-                l, r, arrived = nav.step()   # pose is managed internally
+                l, r, arrived = nav.step()
 
                 # Raw M, command — no firmware PI loop, no timeout issues
                 motor.send_motor_cmd(l, r)
