@@ -20,8 +20,12 @@ PORT = int(os.environ.get("ARIA_VIDEO_HTTP_PORT", "4912"))
 # starting V4LCamera + the embed server; probing too early yields connection refused.
 HTTP_WARMUP_SEC = float(os.environ.get("ARIA_VIDEO_HTTP_WARMUP_SEC", "14"))
 RETRY_SEC = float(os.environ.get("ARIA_CAMERA_RETRY_SEC", "2.5"))
+# Direct snapshot URL override — if set, skips all discovery and polls this URL directly.
+SNAPSHOT_URL = (os.environ.get("ARIA_CAMERA_SNAPSHOT_URL") or "").strip()
 HTTP_PATHS = ["/stream", "/embed", "/", "/snapshot", "/video", "/mjpeg", "/frame", "/cam"]
 WS_PATHS   = ["/ws", "/stream", "/", "/video", "/cam"]
+# Max full discovery cycles before switching to slow (60 s) retry.
+MAX_RETRIES = int(os.environ.get("ARIA_CAMERA_MAX_RETRIES", "4"))
 
 _latest_frame_jpeg = None
 _latest_detections = {}
@@ -29,6 +33,7 @@ _frame_lock = threading.Lock()
 _det_lock   = threading.Lock()
 _active_url = None   # the URL that's actually giving us frames
 _ws_socket  = None   # active WebSocket socket, if any
+_retry_count = 0      # number of full discovery cycles attempted
 
 
 def _outbound_ipv4():
@@ -63,7 +68,14 @@ def video_http_hosts():
     if lan and lan not in seen:
         seen.add(lan)
         out.append(lan)
-    for h in ("127.0.0.1", "localhost"):
+        # Infer Docker host gateway from container's LAN IP (replace last octet with .1)
+        parts = lan.rsplit(".", 1)
+        if len(parts) == 2:
+            gw = parts[0] + ".1"
+            if gw not in seen:
+                seen.add(gw)
+                out.append(gw)
+    for h in ("host.docker.internal", "127.0.0.1", "localhost"):
         if h not in seen:
             seen.add(h)
             out.append(h)
@@ -148,7 +160,7 @@ def _http_probe(path):
 
             resp.close()
         except Exception as e:
-            log.info(f"HTTP {url}: {type(e).__name__}: {e}")
+            log.debug(f"HTTP {url}: {type(e).__name__}: {e}")
     return None
 
 
@@ -242,7 +254,7 @@ def _read_mjpeg(resp, seed_data=b""):
 
 # ── Main discovery + streaming loop ──────────────────────────────────────────
 def _main_loop():
-    global _active_url, _ws_socket
+    global _active_url, _ws_socket, _retry_count
     if HTTP_WARMUP_SEC > 0:
         log.info(
             "Camera: waiting %.1fs for VideoObjectDetection HTTP on :%d (Brick starts after App.run).",
@@ -250,6 +262,38 @@ def _main_loop():
             PORT,
         )
         time.sleep(HTTP_WARMUP_SEC)
+
+    # ── Direct snapshot URL override ─────────────────────────────────────────
+    if SNAPSHOT_URL:
+        log.info("Camera: using direct snapshot URL: %s", SNAPSHOT_URL)
+        try:
+            with urllib.request.urlopen(SNAPSHOT_URL, timeout=5) as r:
+                data = r.read()
+            if b"\xff\xd8" in data:
+                _store_frame(data)
+                log.info("Camera: got JPEG from snapshot URL")
+            else:
+                log.warning("Camera: snapshot URL did not return JPEG (%d bytes)", len(data))
+        except Exception as e:
+            log.warning("Camera: snapshot URL failed: %s", e)
+        # Poll it at 2 fps regardless
+        _http_poll_loop(SNAPSHOT_URL)
+        return
+
+    # ── Give up after MAX_RETRIES and switch to slow poll ────────────────────
+    _retry_count += 1
+    if _retry_count > MAX_RETRIES:
+        log.warning(
+            "Camera: no frame source after %d attempts. "
+            "Set ARIA_VIDEO_HTTP_HOST=<LAN_IP> (your host IP, e.g. 192.168.1.205) "
+            "or ARIA_CAMERA_SNAPSHOT_URL for a direct JPEG URL. "
+            "Checking again in 60s.",
+            MAX_RETRIES,
+        )
+        time.sleep(60)
+        _main_loop()
+        return
+
     hosts = video_http_hosts()
     log.info("Camera: starting discovery on port %d (HTTP hosts: %s)", PORT, ", ".join(hosts))
     found_html_ws = []
