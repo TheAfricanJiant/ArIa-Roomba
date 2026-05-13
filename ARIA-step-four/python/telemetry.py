@@ -46,7 +46,7 @@ ACCEL_NORM_MIN      = 6.5
 ACCEL_NORM_MAX      = 13.2
 MAX_TILT_DEG        = 38.0
 HANDLED_GYRO_XY     = 0.55
-ODOM_INVALID_HOLD_S = 1.6
+ODOM_INVALID_HOLD_S = 0.3   # short hold — long holds cascade into 40+ s pauses
 
 # XRW reports raw encoder counts as T,encL,encR,...
 # The XRP quadrature ISR already produces positive ticks for forward motion on
@@ -367,10 +367,9 @@ def _update_motion_status(delta_l: int, delta_r: int, dt: float, now: float) -> 
         reasons.append("tilted")
     if gyro_xy > HANDLED_GYRO_XY:
         reasons.append("handled")
-    dtheta_enc = ((delta_r - delta_l) * CM_PER_TICK) / WHEEL_BASE_CM
-    dtheta_imu = gz * dt
-    if abs(dtheta_enc) > 0.12 and abs(dtheta_imu) < 0.03:
-        reasons.append("encoder-gyro-disagree")
+    # NOTE: encoder-gyro-disagree check removed — on this robot gz ≈ 0 during
+    # normal turns (IMU z-axis orientation), so the check fires on every rotation
+    # tick and continuously extends _odom_invalid_until, causing 40+ s pauses.
 
     if reasons:
         _odom_invalid_until = max(_odom_invalid_until, now + ODOM_INVALID_HOLD_S)

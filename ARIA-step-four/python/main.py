@@ -876,17 +876,6 @@ def navigation_loop():
 
             # ── Manual nav mode: simple P-controller with EKF feedback ──
             elif state["navigating"] and state["motors_on"]:
-                motion = telemetry.get_motion_status()
-                if not motion.get("odom_valid", True):
-                    motor.send_motor_cmd(0, 0)
-                    ui.send_message("nav_status", {
-                        **nav.debug_status(),
-                        "state": "paused-odom-invalid",
-                        "mode": motion.get("odom_status", "odometry rejected"),
-                    })
-                    time.sleep(0.05)
-                    continue
-
                 nav.set_speed(state["speed"])
                 l, r, arrived = nav.step(
                     pose["x_cm"], pose["y_cm"], pose["theta_rad"]
