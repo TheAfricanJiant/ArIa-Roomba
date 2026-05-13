@@ -360,6 +360,10 @@ def goto_cmd(sender: Sender, message: Message):
     if name not in areas:
         sender.reply(f"❌ Area '{name}' not found. Use /areas."); return
     c = areas[name]
+    pose = telemetry.get_pose()
+    raw  = telemetry.telemetry
+    nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
+                  raw["enc_l"], raw["enc_r"])
     nav.set_goal(c["x"], c["y"], state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
@@ -429,6 +433,10 @@ def _run_clean_zone(x_min, y_min, x_max, y_max):
             candidates.append((dist, pts))
 
     path = min(candidates, key=lambda item: item[0])[1]
+    pose = telemetry.get_pose()
+    raw  = telemetry.telemetry
+    nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
+                  raw["enc_l"], raw["enc_r"])
     nav.set_path(path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
@@ -445,6 +453,10 @@ def stopclean_cmd(sender: Sender, message: Message):
 def dock_cmd(sender: Sender, message: Message):
     dock = _load_json(DOCK_FILE)
     if not dock: sender.reply("❌ No dock saved. Use /setdock first."); return
+    pose = telemetry.get_pose()
+    raw  = telemetry.telemetry
+    nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
+                  raw["enc_l"], raw["enc_r"])
     nav.set_goal(dock["x"], dock["y"], state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
