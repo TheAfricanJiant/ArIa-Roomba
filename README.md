@@ -11,6 +11,9 @@
 ### DIY Vacum
 ![DIY Vacum](explosion-ezgif.gif)
 
+### Waypoint Following 
+![waypoint](heading.png)
+
 ---
 ### NOTE
 - Crontab can be used to startup teh socat connection automatically on reboot.  Socat creates a virtual serial port for the Arduino Uno Q container to communicaete with teh XRP controller over serial 
@@ -60,3 +63,4 @@ src="https://www.youtube.com/embed/BKaiV54UXMU?si=G5n-rL69w6N3c07x"
 > **Demo1** — recorded on the Arduino UNO Q running ARIA-step-four.`
 
 > **Demo2** — Using Project Aria-step-Four to deonstrate UI and Telegram control of the robot. src= "https://youtu.be/bRKg05knbhE"
+
