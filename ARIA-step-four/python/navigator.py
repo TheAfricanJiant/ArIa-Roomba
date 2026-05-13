@@ -1,236 +1,225 @@
+"""
+ARIA — Encoder-Only Waypoint Follower
+======================================
+Strategy:
+  - Pure encoder dead-reckoning for pose (no gyro — gz≈0 on this platform).
+  - Raw M,left,right commands (bypasses XRW PI velocity loop entirely).
+  - Proportional heading correction: one wheel slows, the other speeds up.
+  - NEVER stops between waypoints. Continuous motion from start to finish.
+  - No odom validation gates. If encoders are ticking, we navigate.
+
+Call update_encoders(enc_l, enc_r) each time new telemetry arrives.
+Call step() at ~50 Hz to get (left_pwm, right_pwm, arrived).
+"""
+
 import math
 import time
 import logging
 
 log = logging.getLogger(__name__)
 
-# Module-level reference used by telemetry.get_obstacle_snapshot() to read the
-# active goal without a circular import.
+# Module-level cache used by telemetry.get_obstacle_snapshot()
 _cached_nav = None
+
+# ── Robot geometry (must match telemetry.py) ──────────────────────────────────
+WHEEL_BASE_CM     = 15.5
+WHEEL_DIAMETER_CM = 6.0
+TICKS_PER_REV     = 585
+CM_PER_TICK       = math.pi * WHEEL_DIAMETER_CM / TICKS_PER_REV
+
+
+def _wrap(a: float) -> float:
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
+
+def _clamp(v, lo, hi):
+    return max(lo, min(hi, v))
 
 
 class Navigator:
-    """EKF-feedback waypoint follower using the same motor basis as manual controls."""
+    """
+    Encoder-only proportional waypoint follower.
+
+    Pose is tracked internally from encoder deltas — independent of the EKF.
+    Motor commands are raw M, PWM (fire-and-forget, no firmware timeout issues).
+    """
 
     def __init__(self):
-        self.goal = None
-        self.waypoints = []
-        self.base_speed = 80
-        self.arrival_dist_cm = 18.0
-        self.accept_dist_cm = 28.0
-        self.slow_radius_cm = 120.0
-        self.min_drive_pwm = 34
-        self.max_drive_pwm = 150
-        self.min_turn_pwm = 28
-        self.max_turn_pwm = 85
-        self.align_error_rad = math.radians(42)
-        self.close_radius_cm = 42.0
-        self.progress_timeout_s = 2.8
-        self.close_timeout_s = 4.0
-        self._stall_since = 0.0
-        self._last_distance = float("inf")
-        self._last_progress_ts = time.monotonic()
-        self._best_distance = float("inf")
-        self._last_abs_error = float("inf")
-        self._turn_polarity = 1.0
-        self._debug = self._empty_debug("idle")
+        # ── Internal pose ─────────────────────────────────────────────────────
+        self.x     = 0.0
+        self.y     = 0.0
+        self.theta = 0.0
+        self._last_enc_l      = 0
+        self._last_enc_r      = 0
+        self._enc_initialised = False
+
+        # ── Path state ────────────────────────────────────────────────────────
+        self.goal       = None   # (x_cm, y_cm) current target
+        self.waypoints  = []     # remaining waypoints
+
+        # ── Tuning ────────────────────────────────────────────────────────────
+        self.base_speed  = 80    # base forward PWM
+        self.arrival_cm  = 18.0  # declare arrived within this distance
+        self.accept_cm   = 28.0  # forced-accept when stalled this close
+        self.slow_cm     = 80.0  # start slowing down this far from goal
+        self.min_fwd_pwm = 38    # motor deadband floor
+        self.K_turn      = 0.75  # heading gain  (0 = no correction, 1 = max)
+        self._stall_sec  = 6.0   # force-accept stall timeout
+
+        # ── Stall tracking ────────────────────────────────────────────────────
+        self._best_dist   = float("inf")
+        self._stall_since = time.monotonic()
+
+        # ── Debug snapshot ────────────────────────────────────────────────────
+        self._debug = self._make_debug("idle", 0, 0, 0.0, 0.0)
+
         global _cached_nav
         _cached_nav = self
 
+    # ── Encoder integration ───────────────────────────────────────────────────
+    def update_encoders(self, enc_l: int, enc_r: int):
+        """Integrate encoder ticks into (x, y, theta). Call on every telemetry tick."""
+        if not self._enc_initialised:
+            self._last_enc_l = enc_l
+            self._last_enc_r = enc_r
+            self._enc_initialised = True
+            return
+
+        dl = enc_l - self._last_enc_l
+        dr = enc_r - self._last_enc_r
+        self._last_enc_l = enc_l
+        self._last_enc_r = enc_r
+
+        d_l     = dl * CM_PER_TICK
+        d_r     = dr * CM_PER_TICK
+        d_c     = (d_l + d_r) * 0.5
+        d_theta = (d_r - d_l) / WHEEL_BASE_CM
+
+        half        = d_theta * 0.5
+        self.theta  = _wrap(self.theta + half)
+        self.x     += d_c * math.cos(self.theta)
+        self.y     += d_c * math.sin(self.theta)
+        self.theta  = _wrap(self.theta + half)
+
+    # ── Path management ───────────────────────────────────────────────────────
     def set_speed(self, speed: int):
-        self.base_speed = max(0, min(self.max_drive_pwm, int(speed)))
+        self.base_speed = int(_clamp(speed, self.min_fwd_pwm, 255))
 
     def set_goal(self, x: float, y: float, speed: int):
         self.set_path([(x, y)], speed)
 
     def set_path(self, points: list, speed: int):
-        self.waypoints = self._prepare_path(points)
-        self.set_speed(speed)
-        self._reset_progress()
-        self._pop_next_goal()
-        self._debug = self._empty_debug("planning")
-        log.info(
-            "Navigator path set with %d points.",
-            len(self.waypoints) + (1 if self.goal else 0),
-        )
-
-    def _prepare_path(self, points: list) -> list[tuple[float, float]]:
-        normalized: list[tuple[float, float]] = []
+        pts = []
         for p in points:
             try:
-                if isinstance(p, dict):
-                    x, y = float(p["x"]), float(p["y"])
-                else:
-                    x, y = float(p[0]), float(p[1])
+                pts.append((float(p["x"]), float(p["y"])) if isinstance(p, dict)
+                           else (float(p[0]), float(p[1])))
             except Exception:
                 continue
-            if not normalized or math.hypot(x - normalized[-1][0], y - normalized[-1][1]) > 2.0:
-                normalized.append((x, y))
-
-        if len(normalized) < 2:
-            return normalized
-
-        dense = [normalized[0]]
-        max_segment_cm = 25.0
-        for x, y in normalized[1:]:
-            px, py = dense[-1]
-            dist = math.hypot(x - px, y - py)
-            steps = max(1, int(math.ceil(dist / max_segment_cm)))
-            for i in range(1, steps + 1):
-                t = i / steps
-                dense.append((px + (x - px) * t, py + (y - py) * t))
-        return dense
-
-    def _reset_progress(self):
-        self._stall_since = 0.0
-        self._last_distance = float("inf")
-        self._last_progress_ts = time.monotonic()
-        self._best_distance = float("inf")
-        self._last_abs_error = float("inf")
-
-    def _pop_next_goal(self):
-        if self.waypoints:
-            self.goal = self.waypoints.pop(0)
-            self._reset_progress()
-            log.info("Navigator heading to: %s", self.goal)
-        else:
-            self.goal = None
+        if not pts:
+            return
+        self.set_speed(speed)
+        self.goal      = pts[0]
+        self.waypoints = pts[1:]
+        self._reset_stall()
+        log.info("Navigator: path set — %d point(s), speed=%d", len(pts), self.base_speed)
 
     def clear_goal(self):
-        self.goal = None
+        self.goal      = None
         self.waypoints = []
-        self._reset_progress()
-        self._debug = self._empty_debug("idle")
+        self._reset_stall()
+        self._debug = self._make_debug("idle", 0, 0, 0.0, 0.0)
 
-    def step(self, current_x: float, current_y: float, current_theta: float) -> tuple[int, int, bool]:
+    def reset_pose(self, enc_l: int = 0, enc_r: int = 0):
+        """Zero navigator pose and resync encoder baseline (call on home-reset)."""
+        self.x = self.y = self.theta = 0.0
+        self._last_enc_l      = enc_l
+        self._last_enc_r      = enc_r
+        self._enc_initialised = True
+        log.info("Navigator pose reset to origin.")
+
+    # ── Control step (50 Hz) ──────────────────────────────────────────────────
+    def step(self, _x=None, _y=None, _theta=None) -> tuple:
+        """
+        Returns (left_pwm, right_pwm, arrived).
+
+        _x/_y/_theta are accepted but ignored — pose comes from update_encoders().
+        Motors run continuously; the only time (0, 0, False) is returned is when
+        there is no active goal.
+        """
         if not self.goal:
-            self._debug = self._empty_debug("idle")
             return 0, 0, False
 
         now = time.monotonic()
-        final_distance = self._distance_to_goal(current_x, current_y, self.goal)
+        dx   = self.goal[0] - self.x
+        dy   = self.goal[1] - self.y
+        dist = math.hypot(dx, dy)
 
-        while self.goal and final_distance < self.arrival_dist_cm:
-            if not self.waypoints:
-                log.info("Navigator arrived at final destination.")
-                self.clear_goal()
-                self._debug = self._empty_debug("arrived")
-                return 0, 0, True
-            log.info("Navigator reached intermediate waypoint.")
-            self._pop_next_goal()
-            final_distance = self._distance_to_goal(current_x, current_y, self.goal)
+        # ── Arrival ──────────────────────────────────────────────────────────
+        if dist < self.arrival_cm:
+            log.info("Navigator: waypoint reached (%.1f cm). Queued: %d",
+                     dist, len(self.waypoints))
+            if self.waypoints:
+                self.goal = self.waypoints.pop(0)
+                self._reset_stall()
+                return self.step()          # tail-recurse to next waypoint
+            self.clear_goal()
+            return 0, 0, True               # final destination reached
 
-        if final_distance < self._best_distance:
-            self._best_distance = final_distance
+        # ── Stall / force-accept ──────────────────────────────────────────────
+        if dist < self._best_dist:
+            self._best_dist   = dist
+            self._stall_since = now
+        elif now - self._stall_since > self._stall_sec and dist < self.accept_cm:
+            log.warning("Navigator: stall-accept at %.1f cm", dist)
+            if self.waypoints:
+                self.goal = self.waypoints.pop(0)
+                self._reset_stall()
+                return self.step()
+            self.clear_goal()
+            return 0, 0, True
 
-        if final_distance < self._last_distance - 0.6:
-            self._last_progress_ts = now
-            self._stall_since = 0.0
-        elif final_distance < self.close_radius_cm:
-            if self._stall_since == 0.0:
-                self._stall_since = now
-            elif now - self._stall_since > self.close_timeout_s and final_distance < self.accept_dist_cm:
-                log.warning("Navigator: close-range stall at %.1f cm; accepting waypoint.", final_distance)
-                self.clear_goal()
-                self._debug = self._empty_debug("stalled-accepted")
-                return 0, 0, True
-        elif now - self._last_progress_ts > self.progress_timeout_s and final_distance > self.accept_dist_cm:
-            self._turn_polarity *= -1.0
-            self._last_progress_ts = now
-            self._best_distance = final_distance
-            log.warning("Navigator: no progress; flipped steering polarity to %.0f.", self._turn_polarity)
-        self._last_distance = final_distance
+        # ── Heading error ─────────────────────────────────────────────────────
+        err = _wrap(math.atan2(dy, dx) - self.theta)   # + = turn left
 
-        dx = self.goal[0] - current_x
-        dy = self.goal[1] - current_y
-        heading_error = _wrap_angle(math.atan2(dy, dx) - current_theta)
-        abs_error = abs(heading_error)
+        # ── Forward speed: ramp down in last slow_cm ──────────────────────────
+        fwd = int(self.base_speed * _clamp(dist / self.slow_cm, 0.35, 1.0))
+        fwd = max(fwd, self.min_fwd_pwm)
 
-        if (
-            final_distance > self.close_radius_cm
-            and math.isfinite(self._last_abs_error)
-            and abs_error > self._last_abs_error + math.radians(10)
-        ):
-            self._turn_polarity *= -1.0
-            log.warning("Navigator: heading error grew; flipped steering polarity to %.0f.", self._turn_polarity)
-        self._last_abs_error = abs_error
+        # ── Differential turn ─────────────────────────────────────────────────
+        # err / π maps heading error to ±1 ; multiplied by gain and base speed
+        turn = int(self.K_turn * self.base_speed * err / math.pi)
+        turn = int(_clamp(turn, -self.base_speed, self.base_speed))
 
-        if self.base_speed <= 0:
-            forward = 0.0
-            turn = 0.0
-            mode = "paused"
-        else:
-            speed_scale = max(0.30, min(1.0, final_distance / self.slow_radius_cm))
-            forward = self.base_speed * speed_scale
-            turn = self._turn_polarity * math.sin(heading_error) * min(
-                self.max_turn_pwm,
-                max(self.min_turn_pwm, self.base_speed * 0.65),
-            )
+        left  = int(_clamp(fwd - turn, -255, 255))
+        right = int(_clamp(fwd + turn, -255, 255))
 
-            if abs_error > self.align_error_rad and final_distance > self.close_radius_cm:
-                forward = 0.0
-                if 0 < abs(turn) < self.min_turn_pwm:
-                    turn = math.copysign(self.min_turn_pwm, turn)
-                mode = "turn-to-heading"
-            else:
-                if 0 < abs(forward) < self.min_drive_pwm:
-                    forward = self.min_drive_pwm
-                if final_distance < self.close_radius_cm:
-                    forward = min(forward, 54)
-                turn = _clamp(turn, -abs(forward) * 0.55, abs(forward) * 0.55)
-                mode = "drive-to-goal"
+        self._debug = self._make_debug("driving", left, right, dist, err)
+        return left, right, False
 
-        if 0 < abs(turn) < self.min_turn_pwm and mode == "turn-to-heading":
-            turn = math.copysign(self.min_turn_pwm, turn)
-
-        # Manual-control basis:
-        #   forward > 0 -> motor(+forward, +forward)
-        #   turn    > 0 -> motor(-turn, +turn)
-        left = _clamp(forward - turn, -self.max_drive_pwm, self.max_drive_pwm)
-        right = _clamp(forward + turn, -self.max_drive_pwm, self.max_drive_pwm)
-
-        self._debug = {
-            "state": mode,
-            "goal": {"x": round(self.goal[0], 1), "y": round(self.goal[1], 1)},
-            "target": {"x": round(self.goal[0], 1), "y": round(self.goal[1], 1)},
-            "distance_cm": round(final_distance, 1),
-            "heading_error_deg": round(math.degrees(heading_error), 1),
-            "left_pwm": int(left),
-            "right_pwm": int(right),
-            "queued": len(self.waypoints),
-            "forward_pwm": int(forward),
-            "turn_pwm": int(turn),
-            "turn_polarity": int(self._turn_polarity),
-            "mode": "manual-basis ekf go-to-goal",
-        }
-        return int(left), int(right), False
-
-    def _distance_to_goal(self, current_x: float, current_y: float, goal: tuple[float, float]) -> float:
-        return math.hypot(goal[0] - current_x, goal[1] - current_y)
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    def _reset_stall(self):
+        self._best_dist   = float("inf")
+        self._stall_since = time.monotonic()
 
     def debug_status(self) -> dict:
         return dict(self._debug)
 
-    def _empty_debug(self, state: str) -> dict:
+    def _make_debug(self, state, left, right, dist, err) -> dict:
         return {
-            "state": state,
-            "goal": None,
-            "target": None,
-            "distance_cm": 0.0,
-            "heading_error_deg": 0.0,
-            "left_pwm": 0,
-            "right_pwm": 0,
-            "queued": 0,
-            "forward_pwm": 0,
-            "turn_pwm": 0,
-            "turn_polarity": int(self._turn_polarity),
-            "mode": "manual-basis ekf go-to-goal",
+            "state":             state,
+            "goal":              {"x": round(self.goal[0], 1), "y": round(self.goal[1], 1)} if self.goal else None,
+            "target":            {"x": round(self.goal[0], 1), "y": round(self.goal[1], 1)} if self.goal else None,
+            "distance_cm":       round(dist, 1),
+            "heading_error_deg": round(math.degrees(err), 1),
+            "left_pwm":          left,
+            "right_pwm":         right,
+            "forward_pwm":       left,   # approx
+            "turn_pwm":          0,
+            "turn_polarity":     1,
+            "queued":            len(self.waypoints),
+            "mode":              "encoder-only proportional M,cmd",
+            "pose_x":            round(self.x, 1),
+            "pose_y":            round(self.y, 1),
+            "pose_theta_deg":    round(math.degrees(self.theta), 1),
         }
-
-
-def _wrap_angle(angle: float) -> float:
-    return (angle + math.pi) % (2 * math.pi) - math.pi
-
-
-def _clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))

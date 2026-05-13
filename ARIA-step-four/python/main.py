@@ -874,16 +874,19 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Manual nav mode: simple P-controller with EKF feedback ──
+            # ── Manual nav mode: encoder-only proportional follower ──
             elif state["navigating"] and state["motors_on"]:
-                nav.set_speed(state["speed"])
-                l, r, arrived = nav.step(
-                    pose["x_cm"], pose["y_cm"], pose["theta_rad"]
-                )
-                # Waypoint mode uses firmware wheel-speed feedback; manual UI stays raw PWM.
-                motor.send_auto_cmd(l, r)
+                # Feed latest encoder counts so navigator tracks pose itself
+                raw = telemetry.telemetry
+                nav.update_encoders(raw["enc_l"], raw["enc_r"])
 
-                # Push nav status every loop tick for realtime UI
+                nav.set_speed(state["speed"])
+                l, r, arrived = nav.step()   # pose is managed internally
+
+                # Raw M, command — no firmware PI loop, no timeout issues
+                motor.send_motor_cmd(l, r)
+
+                # Realtime UI
                 ui.send_message("nav_status", nav.debug_status())
 
                 count = len(nav.waypoints)
@@ -1055,6 +1058,7 @@ ui.on_message("frame_from_browser", frame_from_browser)
 # Encoder reset ("Set as Home")
 def ui_reset_encoders(client, data):
     telemetry.reset_encoders()
+    nav.reset_pose(0, 0)           # sync navigator baseline to new home
     if _FULL_NAV and _clean_sm:
         _clean_sm.stop()
     nav.clear_goal()
