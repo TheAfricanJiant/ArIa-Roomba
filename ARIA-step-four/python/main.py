@@ -885,29 +885,17 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Manual nav: EKF open-loop (manual-drive-style commands) ──
+            # ── Manual nav: straight drive only if waypoint is ahead ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
                 gx, gy = nav.goal
                 dx = gx - pose["x_cm"]
                 dy = gy - pose["y_cm"]
                 dist = math.hypot(dx, dy)
                 bearing = math.atan2(dy, dx)
-                # Compute signed heading error robustly
                 err = math.atan2(
                     math.sin(bearing - pose["theta_rad"]),
                     math.cos(bearing - pose["theta_rad"])
                 )
-
-                nav._log_ctr = getattr(nav, '_log_ctr', 0) + 1
-                if nav._log_ctr % 10 == 0:
-                    log.info(
-                        f"NAV g=({gx:.0f},{gy:.0f}) "
-                        f"p=({pose['x_cm']:.0f},{pose['y_cm']:.0f}) "
-                        f"b={math.degrees(bearing):.1f} "
-                        f"t={math.degrees(pose['theta_rad']):.1f} "
-                        f"e={math.degrees(err):.1f} "
-                        f"d={dist:.0f}"
-                    )
 
                 spd = state["speed"]
                 arrived = False
@@ -921,21 +909,20 @@ def navigation_loop():
                         state["motors_on"]  = False
                         arrived = True
                     motor.send_motor_cmd(0, 0)
-                elif abs(err) > 0.2:
-                    turn_spd = max(45, int(spd * 0.6))
-                    if err > 0:
-                        motor.send_motor_cmd(-turn_spd, turn_spd)  # LEFT
-                    else:
-                        motor.send_motor_cmd(turn_spd, -turn_spd)  # RIGHT
+                elif abs(math.degrees(err)) > 15.0:
+                    motor.send_motor_cmd(0, 0)
+                    ui.send_message("nav_status", {
+                        "error": "Cannot navigate: waypoint not in front of robot",
+                        "heading_error_deg": round(math.degrees(err), 1),
+                    })
+                    state["navigating"] = False
+                    state["motors_on"]  = False
                 else:
-                    # Drive straight like manual forward
                     motor.send_motor_cmd(spd, spd)
 
-                # Realtime UI
                 ui.send_message("nav_status", {
-                    "state": "turn" if abs(err) > 0.2 else "drive",
                     "distance_cm": round(dist, 1),
-                    "heading_error_deg": round(math.degrees(err), 1),
+                    "state": "idle" if arrived or not state["navigating"] else "drive",
                     "queued": len(nav.waypoints),
                     "pose_x": round(pose["x_cm"], 1),
                     "pose_y": round(pose["y_cm"], 1),
@@ -943,8 +930,9 @@ def navigation_loop():
                 })
 
                 if arrived:
+                    state["navigating"] = False
+                    state["motors_on"]  = False
                     ui.send_message("state_update", state)
-                    ui.send_message("nav_status", {"state": "arrived"})
                     ui.send_message("path_update", [])
             
             update_hardware_indicators()
