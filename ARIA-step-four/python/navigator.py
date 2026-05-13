@@ -128,7 +128,12 @@ class Navigator:
         if dist < self.arrival_cm:
             if self.waypoints:
                 self.goal = self.waypoints.pop(0)
-                self.state = "turning"
+                # Only force turning if the new waypoint is behind us or far off heading
+                dx_new = self.goal[0] - self.x
+                dy_new = self.goal[1] - self.y
+                new_err = _wrap(math.atan2(dy_new, dx_new) - self.theta)
+                if abs(math.degrees(new_err)) > 25.0:
+                    self.state = "turning"
                 return self.step()
             self.clear_goal()
             return 0, 0, True
@@ -142,7 +147,7 @@ class Navigator:
 
         # Simple state machine matching your MicroPython logic
         if self.state == "turning":
-            if abs(err_deg) < 10.0:
+            if abs(err_deg) < 15.0:
                 self.state = "driving"
                 self._spin_start_time = 0
             else:
@@ -163,7 +168,7 @@ class Navigator:
                     right = -turn_eff
 
         if self.state == "driving":
-            if abs(err_deg) > 25.0:
+            if abs(err_deg) > 35.0:
                 # We drifted too far off heading, stop and spin
                 self.state = "turning"
             else:

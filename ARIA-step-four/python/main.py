@@ -808,25 +808,8 @@ def set_path(client, data):
     nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
                   raw["enc_l"], raw["enc_r"])
     
-    full_path = []
-    try:
-        from aria.astar import plan_path
-        if telemetry.grid:
-            wps = [{"x": pose["x_cm"], "y": pose["y_cm"]}] + points
-            for i in range(len(wps) - 1):
-                start = wps[i]
-                goal = wps[i+1]
-                path = plan_path(telemetry.grid, start["x"], start["y"], goal["x"], goal["y"])
-                if path:
-                    if full_path and path:
-                        full_path.extend(path[1:])
-                    else:
-                        full_path.extend(path)
-    except Exception as e:
-        log.error(f"set_path A* error: {e}")
-        
-    if not full_path:
-        full_path = [(p["x"], p["y"]) for p in points]
+    # Use raw waypoints directly (skip A* if no obstacles)
+    full_path = [(p["x"], p["y"]) for p in points]
         
     # Strip start point if too close (prevent looping)
     if full_path:
@@ -845,6 +828,10 @@ def set_path(client, data):
     state["navigating"] = True; state["motors_on"] = True
     gx, gy = nav.goal if nav.goal else full_path[0]
     dist = math.hypot(gx - pose["x_cm"], gy - pose["y_cm"])
+    
+    # Clear the user's green waypoints now that A* plan is taking over
+    ui.send_message("path_update", [])
+    
     ui.send_message("state_update", state)
     ui.send_message("nav_status", {
         "state": "driving",
@@ -968,7 +955,7 @@ def navigation_loop():
                 dist = math.hypot(dx, dy)
 
                 remaining = [{"x": gx, "y": gy}] + [{"x": p[0], "y": p[1]} for p in nav.waypoints]
-                ui.send_message("path_update", [{"x": pose["x_cm"], "y": pose["y_cm"]}] + remaining)
+                ui.send_message("path_plan_update", [{"x": pose["x_cm"], "y": pose["y_cm"]}] + remaining)
                 ui.send_message("nav_status", nav.debug_status())
             
             update_hardware_indicators()
@@ -1111,20 +1098,10 @@ def ui_request_path_plan(client, data):
     waypoints = data.get("waypoints")
     if not waypoints or len(waypoints) < 2: return
     try:
-        from aria.astar import plan_path
-        if telemetry.grid:
-            full_path = []
-            for i in range(len(waypoints) - 1):
-                start = waypoints[i]
-                goal = waypoints[i+1]
-                path = plan_path(telemetry.grid, start["x"], start["y"], goal["x"], goal["y"])
-                if path:
-                    if full_path and path:
-                        full_path.extend(path[1:])
-                    else:
-                        full_path.extend(path)
-            if full_path:
-                ui.send_message("path_plan_update", [{"x": p[0], "y": p[1]} for p in full_path], client)
+        # Just use straight lines between waypoints (skip A*)
+        full_path = [(p["x"], p["y"]) for p in waypoints]
+        if full_path:
+            ui.send_message("path_plan_update", [{"x": p[0], "y": p[1]} for p in full_path], client)
     except Exception as e:
         log.error(f"Path planning error: {e}")
 
