@@ -761,6 +761,10 @@ def on_get_initial_state(client, data):
 
 def set_goal(client, data):
     x = data.get("x", 0.0); y = data.get("y", 0.0)
+    pose = telemetry.get_pose()
+    raw  = telemetry.telemetry
+    nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
+                  raw["enc_l"], raw["enc_r"])
     nav.set_goal(x, y, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
@@ -770,6 +774,10 @@ def set_path(client, data):
     points = data.get("path", [])
     if not points: return
     path = [(p["x"], p["y"]) for p in points]
+    pose = telemetry.get_pose()
+    raw  = telemetry.telemetry
+    nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"],
+                  raw["enc_l"], raw["enc_r"])
     nav.set_path(path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)

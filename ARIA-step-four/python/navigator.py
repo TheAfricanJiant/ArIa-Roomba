@@ -93,6 +93,8 @@ class Navigator:
         d_l     = dl * CM_PER_TICK
         d_r     = dr * CM_PER_TICK
         d_c     = (d_l + d_r) * 0.5
+        # Standard differential: left motor on left side.
+        # Left turn (CCW) → enc_r increases, enc_l decreases → d_r > d_l → d_theta > 0
         d_theta = (d_r - d_l) / WHEEL_BASE_CM
 
         half        = d_theta * 0.5
@@ -129,6 +131,21 @@ class Navigator:
         self.waypoints = []
         self._reset_stall()
         self._debug = self._make_debug("idle", 0, 0, 0.0, 0.0)
+
+    def sync_pose(self, x: float, y: float, theta: float,
+                  enc_l: int = None, enc_r: int = None):
+        """Align navigator pose with the EKF estimate at goal-set time.
+        Call this just before set_goal/set_path so dead-reckoning starts
+        from the correct known position instead of accumulated (0,0,0)."""
+        self.x     = x
+        self.y     = y
+        self.theta = theta
+        if enc_l is not None:
+            self._last_enc_l      = enc_l
+            self._last_enc_r      = enc_r
+            self._enc_initialised = True
+        log.info("Navigator pose synced: x=%.1f y=%.1f θ=%.1f°",
+                 x, y, math.degrees(theta))
 
     def reset_pose(self, enc_l: int = 0, enc_r: int = 0):
         """Zero navigator pose and resync encoder baseline (call on home-reset)."""
@@ -180,19 +197,22 @@ class Navigator:
             return 0, 0, True
 
         # ── Heading error ─────────────────────────────────────────────────────
-        err = _wrap(math.atan2(dy, dx) - self.theta)   # + = turn left
+        err = _wrap(math.atan2(dy, dx) - self.theta)   # + = need to turn left
 
-        # ── Forward speed: ramp down in last slow_cm ──────────────────────────
-        fwd = int(self.base_speed * _clamp(dist / self.slow_cm, 0.35, 1.0))
-        fwd = max(fwd, self.min_fwd_pwm)
+        # ── Forward speed: ramp down near goal AND when far off-heading ────────
+        heading_scale = _clamp(1.0 - abs(err) / math.pi, 0.0, 1.0)
+        dist_scale    = _clamp(dist / self.slow_cm, 0.35, 1.0)
+        fwd = int(self.base_speed * dist_scale * heading_scale)
+        fwd = max(fwd, self.min_fwd_pwm) if heading_scale > 0.2 else 0
 
-        # ── Differential turn ─────────────────────────────────────────────────
-        # err / π maps heading error to ±1 ; multiplied by gain and base speed
+        # ── Differential turn (standard convention) ────────────────────────────
+        # err > 0 (goal to the left) → turn > 0 → right > left → robot turns left
         turn = int(self.K_turn * self.base_speed * err / math.pi)
         turn = int(_clamp(turn, -self.base_speed, self.base_speed))
 
-        left  = int(_clamp(fwd - turn, -255, 255))
-        right = int(_clamp(fwd + turn, -255, 255))
+        left  = int(_clamp(fwd - turn, -255, 255))   # left slower → curves left
+        right = int(_clamp(fwd + turn, -255, 255))   # right faster → curves left
+
 
         self._debug = self._make_debug("driving", left, right, dist, err)
         return left, right, False
