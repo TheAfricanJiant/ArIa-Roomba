@@ -802,8 +802,6 @@ def set_path(client, data):
     nav.set_path(path, state["speed"])
     state["navigating"] = True; state["motors_on"] = True
     ui.send_message("state_update", state)
-    ui.send_message("nav_status", nav.debug_status())
-    ui.send_message("path_update", [{"x":p[0],"y":p[1]} for p in path])
 
 def clean_zone_ui(client, data):
     zone = data.get("zone")
@@ -902,7 +900,7 @@ def navigation_loop():
                     pass
                 ui.send_message("clean_state", {"state": _clean_sm.state_name})
 
-            # ── Pure visual nav: show distance from robot to waypoint ──
+            # ── Pure visual: line + distance on GUI map, NO motors ──
             elif state["navigating"] and state["motors_on"] and nav.goal:
                 gx, gy = nav.goal
                 dx = gx - pose["x_cm"]
@@ -913,6 +911,18 @@ def navigation_loop():
                     math.sin(bearing - pose["theta_rad"]),
                     math.cos(bearing - pose["theta_rad"])
                 )
+
+                # Draw a line: 30 interpolated points robot → goal
+                steps = 30
+                path = []
+                for i in range(steps + 1):
+                    t = i / steps
+                    path.append({
+                        "x": pose["x_cm"] + t * dx,
+                        "y": pose["y_cm"] + t * dy,
+                    })
+                ui.send_message("path_update", path)
+
                 ui.send_message("nav_status", {
                     "state": "driving",
                     "distance_cm": round(dist, 1),
