@@ -39,7 +39,7 @@ class Navigator:
         self.waypoints = []
 
         self.base_speed = 120
-        self.arrival_cm = 15.0
+        self.arrival_cm = 5.0
         self.turn_speed = 100
         self.min_fwd_pwm = 80
         self.slow_cm = 40.0
@@ -108,7 +108,8 @@ class Navigator:
     def sync_pose(self, x, y, theta, enc_l=None, enc_r=None):
         self.x = x
         self.y = y
-        self.theta = theta
+        if self.state not in ["driving", "turning"]:
+            self.theta = theta
         if enc_l is not None:
             self._last_enc_l = enc_l
             self._last_enc_r = enc_r
@@ -189,9 +190,9 @@ class Navigator:
             
             # Apply min PWM to individual wheels to avoid stalling at low speeds
             if 0 < left < self.min_fwd_pwm: left = self.min_fwd_pwm
-            if -self.min_fwd_pwm < left < 0: left = -self.min_fwd_pwm
+            elif -self.min_fwd_pwm < left < 0: left = -self.min_fwd_pwm
             if 0 < right < self.min_fwd_pwm: right = self.min_fwd_pwm
-            if -self.min_fwd_pwm < right < 0: right = -self.min_fwd_pwm
+            elif -self.min_fwd_pwm < right < 0: right = -self.min_fwd_pwm
 
         self._debug = {
             "state": self.state,
