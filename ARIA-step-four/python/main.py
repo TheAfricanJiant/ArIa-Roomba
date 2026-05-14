@@ -828,10 +828,7 @@ def set_path(client, data):
     state["navigating"] = True; state["motors_on"] = True
     gx, gy = nav.goal if nav.goal else full_path[0]
     dist = math.hypot(gx - pose["x_cm"], gy - pose["y_cm"])
-    
-    # Clear the user's green waypoints now that A* plan is taking over
-    ui.send_message("path_update", [])
-    
+    # We will let navigation_loop dynamically shrink the green waypoints!
     ui.send_message("state_update", state)
     ui.send_message("nav_status", {
         "state": "driving",
@@ -955,7 +952,7 @@ def navigation_loop():
                 dist = math.hypot(dx, dy)
 
                 remaining = [{"x": gx, "y": gy}] + [{"x": p[0], "y": p[1]} for p in nav.waypoints]
-                ui.send_message("path_plan_update", [{"x": pose["x_cm"], "y": pose["y_cm"]}] + remaining)
+                ui.send_message("path_update", [{"x": pose["x_cm"], "y": pose["y_cm"]}] + remaining)
                 ui.send_message("nav_status", nav.debug_status())
             
             update_hardware_indicators()

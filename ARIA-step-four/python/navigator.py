@@ -147,19 +147,10 @@ class Navigator:
 
         # Simple state machine matching your MicroPython logic
         if self.state == "turning":
-            if abs(err_deg) < 15.0:
+            if abs(err_deg) < 25.0:  # Widen tolerance so it easily transitions to driving
                 self.state = "driving"
-                self._spin_start_time = 0
             else:
-                if self._spin_start_time == 0:
-                    self._spin_start_time = time.time()
-                elif time.time() - self._spin_start_time > 6.0:
-                    # FAILSAFE: If it spins for 6 seconds, abort the waypoint!
-                    log.warning("Failsafe triggered: spinning too long, aborting waypoint.")
-                    self.clear_goal()
-                    return 0, 0, True
-
-                turn_eff = self.turn_speed if abs(err_deg) > 20 else self.min_fwd_pwm
+                turn_eff = self.turn_speed if abs(err_deg) > 35 else self.min_fwd_pwm
                 if err > 0: # Target is to our left -> turn left
                     left = -turn_eff
                     right = turn_eff
