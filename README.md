@@ -67,3 +67,5 @@ src="https://www.youtube.com/embed/BKaiV54UXMU?si=G5n-rL69w6N3c07x"
 
 > **Demo2** — Using Project Aria-step-Four to deonstrate UI and Telegram control of the robot. src= "https://youtu.be/bRKg05knbhE"
 
+Tu as voirs la video? Did you see this >
+
