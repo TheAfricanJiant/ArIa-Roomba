@@ -38,10 +38,10 @@ class Navigator:
         self.goal = None
         self.waypoints = []
 
-        self.base_speed = 80
+        self.base_speed = 120
         self.arrival_cm = 15.0
-        self.turn_speed = 60
-        self.min_fwd_pwm = 42
+        self.turn_speed = 100
+        self.min_fwd_pwm = 80
         self.slow_cm = 40.0
 
         self.state = "idle"
@@ -77,7 +77,7 @@ class Navigator:
 
     def set_speed(self, speed: int):
         self.base_speed = int(_clamp(speed, self.min_fwd_pwm, 255))
-        self.turn_speed = int(_clamp(speed * 0.7, 45, 120))
+        self.turn_speed = int(_clamp(speed * 0.8, 80, 180))
 
     def set_goal(self, x: float, y: float, speed: int):
         self.set_path([(x, y)], speed)
