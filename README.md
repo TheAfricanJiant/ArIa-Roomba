@@ -67,8 +67,8 @@ src="https://www.youtube.com/embed/BKaiV54UXMU?si=G5n-rL69w6N3c07x"
 
 > **Demo2** — Using Project Aria-step-Four to deonstrate UI and Telegram control of the robot. src= "https://youtu.be/bRKg05knbhE"
 
-<video src="video_2026-05-14_10-38-33.mp4" controls="controls" muted="muted" style="max-width: 100%;">
-  Your browser does not support the video tag.
+<video controls width="250">
+    <source src="video_2026-05-14_10-38-33.mp4" type="video/mp4" />
 </video>
 
 I have decided to use edge impuls efor waypoint follwoing as PID overshoots 
