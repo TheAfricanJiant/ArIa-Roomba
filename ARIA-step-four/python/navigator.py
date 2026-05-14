@@ -173,7 +173,7 @@ class Navigator:
                     left = int(_clamp(fwd_creep + turn_eff, -255, 255))
                     right = int(_clamp(fwd_creep - turn_eff, -255, 255))
 
-        if self.state == "driving":
+        elif self.state == "driving":
             # Drive forward with proportional heading correction (Pure Pursuit)
             dist_scale = _clamp(dist / self.slow_cm, 0.4, 1.0)
             fwd = int(self.base_speed * dist_scale)
