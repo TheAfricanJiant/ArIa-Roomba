@@ -913,10 +913,16 @@ def manual_drive_ui(client, data):
 # Both paths use EKF pose (encoder + IMU) for closed-loop control.
 # ══════════════════════════════════════════════════════════════════════════════
 def navigation_loop():
+    _last_auto_l = 0
+    _last_auto_r = 0
     while True:
         try:
             pose = telemetry.get_pose()
             safe_us = {"front": 999.0, "right": 999.0, "left": 999.0}
+
+            if not state.get("navigating"):
+                _last_auto_l = 0
+                _last_auto_r = 0
 
             # ── Auto clean mode: full state machine ──
             if state.get("auto_clean") and _FULL_NAV and _clean_sm:
@@ -937,12 +943,22 @@ def navigation_loop():
             elif state["navigating"] and state["motors_on"] and nav.goal:
                 nav.sync_pose(pose["x_cm"], pose["y_cm"], pose["theta_rad"])
                 left, right, done = nav.step()
+                
+                # Slew-rate limiting: max PWM change per 20ms tick
+                MAX_DELTA = 15
+                left = max(min(left, _last_auto_l + MAX_DELTA), _last_auto_l - MAX_DELTA)
+                right = max(min(right, _last_auto_r + MAX_DELTA), _last_auto_r - MAX_DELTA)
+                _last_auto_l = left
+                _last_auto_r = right
+                
                 motor.send_auto_cmd(left, right)
                 
                 if done:
                     nav.clear_goal()
                     state["navigating"] = False
                     state["motors_on"] = False
+                    _last_auto_l = 0
+                    _last_auto_r = 0
                     motor.send_motor_cmd(0, 0)
                     ui.send_message("state_update", state)
                 
@@ -952,7 +968,8 @@ def navigation_loop():
                 dist = math.hypot(dx, dy)
 
                 remaining = [{"x": gx, "y": gy}] + [{"x": p[0], "y": p[1]} for p in nav.waypoints]
-                ui.send_message("path_update", [{"x": pose["x_cm"], "y": pose["y_cm"]}] + remaining)
+                ui.send_message("path_update", remaining)
+                ui.send_message("path_plan_update", [{"x": pose["x_cm"], "y": pose["y_cm"]}] + remaining)
                 ui.send_message("nav_status", nav.debug_status())
             
             update_hardware_indicators()

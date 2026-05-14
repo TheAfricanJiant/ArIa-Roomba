@@ -46,6 +46,7 @@ class Navigator:
 
         self.state = "idle"
         self._spin_start_time = 0
+        self._waypoint_start_time = 0
         self._debug = {}
 
         global _cached_nav
@@ -94,6 +95,7 @@ class Navigator:
         self.goal = pts[0]
         self.waypoints = pts[1:]
         self.state = "turning"
+        self._waypoint_start_time = time.time()
         log.info("Navigator path set")
 
     def clear_goal(self):
@@ -101,6 +103,7 @@ class Navigator:
         self.waypoints = []
         self.state = "idle"
         self._spin_start_time = 0
+        self._waypoint_start_time = 0
 
     def sync_pose(self, x, y, theta, enc_l=None, enc_r=None):
         self.x = x
@@ -121,22 +124,32 @@ class Navigator:
         if not self.goal:
             return 0, 0, False
 
-        dx = self.goal[0] - self.x
-        dy = self.goal[1] - self.y
-        dist = math.hypot(dx, dy)
+        while self.goal:
+            dx = self.goal[0] - self.x
+            dy = self.goal[1] - self.y
+            dist = math.hypot(dx, dy)
 
-        if dist < self.arrival_cm:
-            if self.waypoints:
-                self.goal = self.waypoints.pop(0)
-                # Only force turning if the new waypoint is behind us or far off heading
-                dx_new = self.goal[0] - self.x
-                dy_new = self.goal[1] - self.y
-                new_err = _wrap(math.atan2(dy_new, dx_new) - self.theta)
-                if abs(math.degrees(new_err)) > 25.0:
-                    self.state = "turning"
-                return self.step()
-            self.clear_goal()
-            return 0, 0, True
+            if dist < self.arrival_cm:
+                if self.waypoints:
+                    self.goal = self.waypoints.pop(0)
+                    self._waypoint_start_time = time.time()
+                    continue
+                else:
+                    self.clear_goal()
+                    return 0, 0, True
+                    
+            # Progress timeout: If we are stuck trying to reach this waypoint for > 15s, skip it
+            if time.time() - self._waypoint_start_time > 15.0:
+                log.warning("Waypoint timeout! Skipping to next.")
+                if self.waypoints:
+                    self.goal = self.waypoints.pop(0)
+                    self._waypoint_start_time = time.time()
+                    continue
+                else:
+                    self.clear_goal()
+                    return 0, 0, True
+                    
+            break
 
         desired_hdg = math.atan2(dy, dx)
         err = _wrap(desired_hdg - self.theta)
@@ -150,31 +163,35 @@ class Navigator:
             if abs(err_deg) < 25.0:  # Widen tolerance so it easily transitions to driving
                 self.state = "driving"
             else:
-                turn_eff = self.turn_speed if abs(err_deg) > 35 else self.min_fwd_pwm
+                # Add a minimum forward speed to break caster friction (min-forward)
+                fwd_creep = int(self.min_fwd_pwm * 0.6)
+                turn_eff = self.turn_speed
                 if err > 0: # Target is to our left -> turn left
-                    left = -turn_eff
-                    right = turn_eff
+                    left = int(_clamp(fwd_creep - turn_eff, -255, 255))
+                    right = int(_clamp(fwd_creep + turn_eff, -255, 255))
                 else:       # Target is to our right -> turn right
-                    left = turn_eff
-                    right = -turn_eff
+                    left = int(_clamp(fwd_creep + turn_eff, -255, 255))
+                    right = int(_clamp(fwd_creep - turn_eff, -255, 255))
 
         if self.state == "driving":
-            if abs(err_deg) > 35.0:
-                # We drifted too far off heading, stop and spin
-                self.state = "turning"
-            else:
-                # Drive forward with proportional heading correction
-                dist_scale = _clamp(dist / self.slow_cm, 0.4, 1.0)
-                fwd = int(self.base_speed * dist_scale)
-                fwd = max(fwd, self.min_fwd_pwm)
+            # Drive forward with proportional heading correction (Pure Pursuit)
+            dist_scale = _clamp(dist / self.slow_cm, 0.4, 1.0)
+            fwd = int(self.base_speed * dist_scale)
+            fwd = max(fwd, self.min_fwd_pwm)
 
-                # Gentle proportional steering (P-controller)
-                K = 1.5 
-                turn = int(K * err_deg)
-                turn = _clamp(turn, -fwd, fwd)
+            # Gentle proportional steering scaled by forward speed
+            K_p = 0.035  # 3.5% speed differential per degree of error
+            turn_ratio = _clamp(K_p * err_deg, -0.85, 0.85) # Prevent full saturation (reversing inner wheel)
+            turn = int(fwd * turn_ratio)
 
-                left = int(_clamp(fwd - turn, -255, 255))
-                right = int(_clamp(fwd + turn, -255, 255))
+            left = int(_clamp(fwd - turn, -255, 255))
+            right = int(_clamp(fwd + turn, -255, 255))
+            
+            # Apply min PWM to individual wheels to avoid stalling at low speeds
+            if 0 < left < self.min_fwd_pwm: left = self.min_fwd_pwm
+            if -self.min_fwd_pwm < left < 0: left = -self.min_fwd_pwm
+            if 0 < right < self.min_fwd_pwm: right = self.min_fwd_pwm
+            if -self.min_fwd_pwm < right < 0: right = -self.min_fwd_pwm
 
         self._debug = {
             "state": self.state,
