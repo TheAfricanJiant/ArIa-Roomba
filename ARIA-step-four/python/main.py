@@ -951,7 +951,7 @@ def navigation_loop():
                 _last_auto_l = left
                 _last_auto_r = right
                 
-                motor.send_auto_cmd(left, right)
+                motor.send_motor_cmd(left, right)
                 
                 if done:
                     nav.clear_goal()
