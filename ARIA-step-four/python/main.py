@@ -811,8 +811,8 @@ def set_path(client, data):
     # Use raw waypoints directly (skip A* if no obstacles)
     full_path = [(p["x"], p["y"]) for p in points]
         
-    # Strip start point if too close (prevent looping)
-    if full_path:
+    # Strip start point if too close (prevent looping), but keep it if it's the only waypoint
+    if len(full_path) > 1:
         dx = full_path[0][0] - pose["x_cm"]
         dy = full_path[0][1] - pose["y_cm"]
         if math.hypot(dx, dy) < 15.0:
