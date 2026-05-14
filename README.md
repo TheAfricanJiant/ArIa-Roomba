@@ -70,6 +70,7 @@ src="https://www.youtube.com/embed/BKaiV54UXMU?si=G5n-rL69w6N3c07x"
 <video controls width="250">
     <source src="video_2026-05-14_10-38-33.mp4" type="video/mp4" />
 </video>
+<video src="https://github.com/user-attachments/assets/85063b90-ea6b-42ce-b7f3-c0fecd3153b5" width="600" controls></video>
 
 I have decided to use edge impuls efor waypoint follwoing as PID overshoots 
 
