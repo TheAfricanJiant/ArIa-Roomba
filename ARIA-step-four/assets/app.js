@@ -62,6 +62,15 @@ const routinesSelect = document.getElementById('routines-select');
 const navCanvas = document.getElementById('nav-canvas');
 const navCtx    = navCanvas ? navCanvas.getContext('2d') : null;
 
+const eiStartBtn   = document.getElementById('ei-start-btn');
+const eiStopBtn    = document.getElementById('ei-stop-btn');
+const eiDelBtn     = document.getElementById('ei-del-btn');
+const eiDownloadBtn = document.getElementById('ei-download-btn');
+const eiStatus     = document.getElementById('ei-status');
+const eiWpsLeft    = document.getElementById('ei-wps-left');
+const eiSegments   = document.getElementById('ei-segments');
+const eiRows       = document.getElementById('ei-rows');
+
 let _settingGoal = false;
 let _drawingZone = false;
 let _waypoints = []; // array of {x, y}
@@ -184,6 +193,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const badge = document.getElementById('clean-state-badge');
         if (badge) badge.textContent = `State: ${s.state}`;
     });
+    socket.on('ei_logger_update', (s) => updateEiStatus(s));
+    socket.on('ei_csv_data', (d) => downloadCsv(d.csv));
     
     socket.on('path_update', (path) => {
         _waypoints = path;
@@ -370,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         _resetUI();
         startNavBtn.style.display = 'none';
         saveRoutineBtn.style.display = 'none';
+        if (eiStartBtn) eiStartBtn.style.display = 'none';
     });
 
     saveRoutineBtn.addEventListener('click', () => {
@@ -393,6 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearGoalBtn.style.display = 'none';
         startNavBtn.style.display = 'none';
         saveRoutineBtn.style.display = 'none';
+        if (eiStartBtn) eiStartBtn.style.display = 'none';
         if (_lastMapData) _drawMap(_lastMapData);
     });
 
@@ -403,9 +416,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (routine.type === 'zone') {
             _zone = routine.data;
             _waypoints = [];
+            if (eiStartBtn) eiStartBtn.style.display = 'none';
         } else {
             _waypoints = routine.data;
             _zone = null;
+            if (eiStartBtn) eiStartBtn.style.display = 'inline-block';
         }
         startNavBtn.style.display = 'inline-block';
         clearGoalBtn.style.display = 'inline-block';
@@ -446,6 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
             startNavBtn.style.display = 'inline-block';
             saveRoutineBtn.style.display = 'inline-block';
             clearGoalBtn.style.display = 'inline-block';
+            if (eiStartBtn) eiStartBtn.style.display = 'inline-block';
             _zone = null; // clear any zone
         } else if (_drawingZone) {
             if (!_zoneStart) {
@@ -469,7 +485,62 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (_lastMapData) _drawMap(_lastMapData);
     });
+
+    // ── Edge Impulse UI Events ──
+    if (eiStartBtn) {
+        eiStartBtn.addEventListener('click', () => {
+            if (_waypoints.length > 0) {
+                socket.emit('start_ei_collection', { waypoints: _waypoints });
+                _resetUI();
+                startNavBtn.style.display = 'none';
+                saveRoutineBtn.style.display = 'none';
+                eiStartBtn.style.display = 'none';
+            }
+        });
+    }
+
+    if (eiStopBtn) {
+        eiStopBtn.addEventListener('click', () => socket.emit('stop_ei_collection', {}));
+    }
+
+    if (eiDelBtn) {
+        eiDelBtn.addEventListener('click', () => socket.emit('delete_ei_waypoint', {}));
+    }
+
+    if (eiDownloadBtn) {
+        eiDownloadBtn.addEventListener('click', () => socket.emit('request_ei_csv', {}));
+    }
 });
+
+function updateEiStatus(s) {
+    if (!s || !eiStatus) return;
+    eiStatus.textContent = s.recording ? (s.current_goal ? 'Recording...' : 'Finished') : 'Idle';
+    eiStatus.style.color = s.recording ? '#ff9800' : '#aaa';
+    
+    if (eiWpsLeft)  eiWpsLeft.textContent = s.waypoints_left || 0;
+    if (eiSegments) eiSegments.textContent = s.segments_recorded || 0;
+    if (eiRows)     eiRows.textContent = s.current_segment_rows || 0;
+
+    if (s.recording || s.segments_recorded > 0) {
+        if (eiStopBtn) eiStopBtn.style.display = 'inline-block';
+        if (eiDelBtn)  eiDelBtn.style.display = 'inline-block';
+    } else {
+        if (eiStopBtn) eiStopBtn.style.display = 'none';
+        if (eiDelBtn)  eiDelBtn.style.display = 'none';
+    }
+}
+
+function downloadCsv(csvContent) {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aria_nav_data_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
 
 // â”€â”€ UI helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function updateUI(state) {

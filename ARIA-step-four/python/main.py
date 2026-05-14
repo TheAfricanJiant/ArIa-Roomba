@@ -12,7 +12,8 @@ from PIL import Image
 from io import BytesIO
 import threading, logging, json, os, time, math
 
-import serial_bridge, motor, telemetry, navigator, camera, vacuum
+import serial_bridge, motor, telemetry, navigator, camera, vacuum, data_logger
+ei_logger = data_logger.EdgeImpulseLogger()
 
 # ── Full navigation stack (CleaningStateMachine + A*) ────────────────────────
 try:
@@ -59,6 +60,10 @@ def on_get_samples(resource: str, start: str, aggr_window: str):
 
 ui.expose_api("GET", "/get_samples/{resource}/{start}/{aggr_window}", on_get_samples)
 telemetry.set_system_metrics_store(system_metrics_db)
+
+def _on_ei_wp_reached():
+    ui.send_message("ei_logger_update", ei_logger.get_status())
+ei_logger.on_waypoint_reached_cb = _on_ei_wp_reached
 
 # ── Robot state ───────────────────────────────────────────────────────────────
 state = {
@@ -882,26 +887,31 @@ def manual_drive_ui(client, data):
         state["navigating"] = False
         nav.clear_goal()
         motor.send_motor_cmd(0, 0)
+        ei_logger.set_manual_pwm(0, 0)
     elif action == "forward":
         state["motors_on"] = True
         state["navigating"] = False
         nav.clear_goal()
         motor.send_motor_cmd(spd, spd)
+        ei_logger.set_manual_pwm(spd, spd)
     elif action == "backward":
         state["motors_on"] = True
         state["navigating"] = False
         nav.clear_goal()
         motor.send_motor_cmd(-spd, -spd)
+        ei_logger.set_manual_pwm(-spd, -spd)
     elif action == "left":
         state["motors_on"] = True
         state["navigating"] = False
         nav.clear_goal()
         motor.send_motor_cmd(-spd, spd)
+        ei_logger.set_manual_pwm(-spd, spd)
     elif action == "right":
         state["motors_on"] = True
         state["navigating"] = False
         nav.clear_goal()
         motor.send_motor_cmd(spd, -spd)
+        ei_logger.set_manual_pwm(spd, -spd)
     else:
         return
 
@@ -918,7 +928,9 @@ def navigation_loop():
     while True:
         try:
             pose = telemetry.get_pose()
-            safe_us = {"front": 999.0, "right": 999.0, "left": 999.0}
+            safe_us = telemetry.get_ultrasonics()
+            
+            ei_logger.step(pose, telemetry.telemetry, safe_us)
 
             if not state.get("navigating"):
                 _last_auto_l = 0
@@ -1134,6 +1146,27 @@ ui.on_message("take_snapshot",     ui_take_snapshot)
 ui.on_message("camera_detect",     ui_camera_detect)
 ui.on_message("camera_record",     ui_record)
 ui.on_message("frame_from_browser", frame_from_browser)
+
+def start_ei_collection(client, data):
+    ei_logger.start_collection(data.get("waypoints", []))
+    ui.send_message("ei_logger_update", ei_logger.get_status())
+
+def stop_ei_collection(client, data):
+    ei_logger.stop_collection()
+    ui.send_message("ei_logger_update", ei_logger.get_status())
+
+def delete_ei_waypoint(client, data):
+    ei_logger.delete_last_waypoint()
+    ui.send_message("ei_logger_update", ei_logger.get_status())
+
+def request_ei_csv(client, data):
+    csv_data = ei_logger.get_csv_buffer()
+    ui.send_message("ei_csv_data", {"csv": csv_data}, client)
+
+ui.on_message("start_ei_collection", start_ei_collection)
+ui.on_message("stop_ei_collection", stop_ei_collection)
+ui.on_message("delete_ei_waypoint", delete_ei_waypoint)
+ui.on_message("request_ei_csv", request_ei_csv)
 
 # Encoder reset ("Set as Home")
 def ui_reset_encoders(client, data):

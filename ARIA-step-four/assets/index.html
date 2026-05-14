@@ -164,6 +164,24 @@ SPDX-License-Identifier: MPL-2.0
                     <button id="save-routine-btn" class="tab-btn" style="display: none; background: #1976D2; color: white;">💾 Save</button>
                     <button id="clear-goal-btn" class="tab-btn" style="display: none; background: #e53935; color: white;">❌ Clear</button>
                 </div>
+                
+                <!-- Edge Impulse UI -->
+                <div id="ei-panel" style="margin: 0 16px 16px 16px; padding: 12px; background: #0d0d1a; border-radius: 8px; border: 1px solid #008184;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="color: #69f0ae; font-weight: bold; font-size: 14px;">Edge Impulse Data Collection</span>
+                        <span id="ei-status" style="color: #aaa; font-size: 12px;">Idle</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button id="ei-start-btn" class="tab-btn" style="display: none; background: #6a1b9a; color: white; flex: 1;">🔴 Rec Manual Drive</button>
+                        <button id="ei-stop-btn" class="tab-btn" style="display: none; background: #e53935; color: white; flex: 1;">⏹ Stop</button>
+                        <button id="ei-del-btn" class="tab-btn" style="display: none; background: #ff9800; color: white; flex: 1;">🗑 Del Last WP</button>
+                        <button id="ei-download-btn" class="tab-btn" style="background: #388e3c; color: white; flex: 1;">⬇️ CSV</button>
+                    </div>
+                    <div id="ei-info" style="color: #fff; font-size: 12px; margin-top: 8px;">
+                        WPs left: <span id="ei-wps-left">0</span> | Segments: <span id="ei-segments">0</span> | Rows: <span id="ei-rows">0</span>
+                    </div>
+                </div>
+
                 <div style="margin: 0 16px 16px 16px;">
                     <select id="routines-select" style="width: 100%; padding: 12px; border-radius: 8px; background: #008184; color: white; border: none; font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; outline: none; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                         <option value="">-- Load Saved Routine --</option>
