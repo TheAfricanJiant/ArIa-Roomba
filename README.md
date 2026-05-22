@@ -71,5 +71,11 @@ src="https://www.youtube.com/embed/BKaiV54UXMU?si=G5n-rL69w6N3c07x"
     <source src="video_2026-05-14_10-38-33.mp4" type="video/mp4" />
 </video>
 
-I have decided to use edge impuls efor waypoint follwoing as PID overshoots 
+*Under-development:  * Waypoint Following*
+                    *Obstacle Avoidance*
+                    *Roomba Vacuum Cleaning and live Classifcation Using Edge Impulse.*
+
+*Some Kalman Filter Theory:*
+         *see my github repository* (https://github.com/TheAfricanJiant/MyJourneyToASLAMengineer)
+
 
