@@ -62,10 +62,12 @@ This demo showcases ARIA's core capabilities running live on the Arduino UNO Q:
 - 🌀 **Vacuum control** — the L298N-driven vacuum motor being toggled and speed-adjusted via the web UI and Telegram bot
 - 🔍 **Object detection** — the `VideoObjectDetection` brick identifying objects through the camera stream
 
-src="https://www.youtube.com/embed/BKaiV54UXMU?si=G5n-rL69w6N3c07x" 
-> **Demo1** — recorded on the Arduino UNO Q running ARIA-step-four.`
 
-> **Demo2** — Using Project Aria-step-Four to deonstrate UI and Telegram control of the robot. src= "https://youtu.be/bRKg05knbhE"
+> **Demo1** — recorded on the Arduino UNO Q running ARIA-step-four.`
+> [![Watch on YouTube](https://img.shields.io/badge/YouTube-Watch%20Video-red?style=for-the-badge&logo=youtube)](https://www.youtube.com/watch?v=BKaiV54UXMU)
+
+> **Demo2** — Using Project Aria-step-Four to deonstrate UI and Telegram control of the robot.
+> [![Watch on YouTube](https://img.shields.io/badge/YouTube-Watch%20Video-red?style=for-the-badge&logo=youtube)](https://www.youtube.com/watch?v=bRKg05knbhE)
 
 <video controls width="250">
     <source src="video_2026-05-14_10-38-33.mp4" type="video/mp4" />
